@@ -5,34 +5,62 @@
 #include <time.h>
 #include "mbedtls/md.h"
 
+// ─── STRUCTS GLOBAIS ───────────────────────────────────────────────
+// Devem vir antes de qualquer função para que o Arduino IDE não
+// quebre ao gerar os protótipos automáticos das funções que os usam.
+
+struct UltimoSorteio {
+  int      numeros[6];
+  uint32_t semente;
+  char     hash[65];      // 32 bytes hex + null
+  char     timestamp[32];
+  int      total;
+  float    tempCPU;
+};
+
+#define MAX_TASKS 20
+
+struct CoreStats {
+  float    uso0;   // % Core 0
+  float    uso1;   // % Core 1
+  uint32_t freq;   // MHz
+};
+
+// ─── VARIÁVEIS GLOBAIS ─────────────────────────────────────────────
+
 // --- CONFIGURAÇÕES DE REDE ---
 const char* ssid      = "SSID";
 const char* password  = "SENHA";
 const char* serverUrl = "http://192.168.x.x:1880/caos";
 
-// --- NTP (hora real) ---
-// Fuso: America/Sao_Paulo = UTC-3 (-10800 segundos). Ajuste se necessário.
-const char* ntpServer  = "pool.ntp.org";
-const long  gmtOffset  = -3 * 3600; // UTC-3
-const int   dstOffset  = 0;         // Brasil não usa horário de verão atualmente
+// NTP — fuso America/Sao_Paulo = UTC-3
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset = -3 * 3600;
+const int   dstOffset = 0;
 
-// Retorna string no formato DD/MM/AAAA HH:MM:SS
-String getTimestamp() {
-  struct tm t;
-  if (!getLocalTime(&t)) return "sem hora NTP";
-  char buf[20];
-  strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S", &t);
-  return String(buf);
-}
+unsigned long ultimaExecucao = 0;
+const long    intervalo      = 60000; // 1 minuto
 
-// --- SENSOR DE TEMPERATURA INTERNO DO ESP32 ---
-// Nota: mede o die do chip, não a temperatura ambiente.
-// Imprecisão de ±5–10°C é normal — o valor absoluto importa menos
-// que a variação, que reflete a carga térmica e a atividade do RNG.
+WebServer server(80);
+
+static portMUX_TYPE entropiaMux   = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t   entropia_viva = 0;
+
+UltimoSorteio ultimo;
+bool          temDados = false;
+
+// Snapshots para cálculo delta de uso de CPU
+static uint32_t     snap_runtime[MAX_TASKS];
+static TaskHandle_t snap_handles[MAX_TASKS];
+static UBaseType_t  snap_count     = 0;
+static uint32_t     snap_lastTotal = 0;
+
+// ─── SENSOR DE TEMPERATURA ─────────────────────────────────────────
+// "temprature_sens_read" — typo intencional, é o nome oficial do SDK
 #ifdef __cplusplus
 extern "C" {
 #endif
-uint8_t temprature_sens_read(); // nome oficial da Espressif (typo intencional)
+uint8_t temprature_sens_read();
 #ifdef __cplusplus
 }
 #endif
@@ -41,32 +69,16 @@ float getTempCPU() {
   return (temprature_sens_read() - 32) / 1.8f;
 }
 
-// --- CONTROLE DE TEMPO ---
-unsigned long ultimaExecucao = 0;
-const long intervalo = 60000; // 1 minuto
+// ─── NTP ───────────────────────────────────────────────────────────
+String getTimestamp() {
+  struct tm t;
+  if (!getLocalTime(&t)) return "sem hora NTP";
+  char buf[20];
+  strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S", &t);
+  return String(buf);
+}
 
-// --- WEBSERVER NA PORTA 80 ---
-WebServer server(80);
-
-// --- ENTROPIA PROTEGIDA ---
-static portMUX_TYPE entropiaMux = portMUX_INITIALIZER_UNLOCKED;
-volatile uint32_t entropia_viva = 0;
-
-// --- ESTADO VISÍVEL NA WEB (atualizado a cada sorteio) ---
-struct UltimoSorteio {
-  int     numeros[6];
-  uint32_t semente;
-  char    hash[65];       // 32 bytes hex + null
-  char    timestamp[32];
-  int     total;
-  float   tempCPU;
-} ultimo;
-
-bool temDados = false;
-
-// ─────────────────────────────────────────────
-// Core 0: Geração Contínua de Entropia Física
-// ─────────────────────────────────────────────
+// ─── ENTROPIA (CORE 0) ─────────────────────────────────────────────
 void taskGeradoraDeCaos(void* pvParameters) {
   for (;;) {
     uint32_t novo = esp_random() ^ (uint32_t)micros();
@@ -85,52 +97,26 @@ uint32_t capturarEntropia() {
   return val;
 }
 
-// ─────────────────────────────────────────────
-// Uso dos núcleos via FreeRTOS runtime stats
-//
-// O FreeRTOS acumula "ticks de runtime" por task. Para calcular
-// o uso percentual, tiramos dois snapshots com intervalo fixo e
-// comparamos o delta de cada task com o delta total do sistema.
-//
-// Limitação: o ESP32 não expõe uso por núcleo diretamente.
-// Identificamos o núcleo de cada task pelo campo xCoreID do
-// TaskStatus_t e somamos os deltas das tasks de cada núcleo.
-// ─────────────────────────────────────────────
-
-// Habilita coleta de runtime stats no FreeRTOS
-// (já ativado por padrão no ESP32 Arduino Core)
-#define MAX_TASKS 20
-
-struct CoreStats {
-  float uso0;   // % Core 0
-  float uso1;   // % Core 1
-  uint32_t freq; // MHz
-};
-
-// Snapshot anterior para calcular delta
-static uint32_t snap_runtime[MAX_TASKS] = {0};
-static UBaseType_t snap_count = 0;
-static TaskHandle_t snap_handles[MAX_TASKS] = {nullptr};
-
+// ─── USO DOS NÚCLEOS via FreeRTOS runtime stats ────────────────────
 CoreStats getCoreStats() {
-  CoreStats cs = {0, 0, 0};
+  CoreStats cs;
+  cs.uso0 = 0;
+  cs.uso1 = 0;
   cs.freq = getCpuFrequencyMhz();
 
   TaskStatus_t tasks[MAX_TASKS];
-  uint32_t totalRuntime;
-  UBaseType_t n = uxTaskGetSystemState(tasks, MAX_TASKS, &totalRuntime);
+  uint32_t     totalRuntime = 0;
+  UBaseType_t  n = uxTaskGetSystemState(tasks, MAX_TASKS, &totalRuntime);
+
   if (n == 0 || totalRuntime == 0) return cs;
 
-  // Calcula delta do runtime total desde o último snapshot
-  static uint32_t lastTotal = 0;
-  uint32_t deltaTotal = totalRuntime - lastTotal;
-  lastTotal = totalRuntime;
+  uint32_t deltaTotal = totalRuntime - snap_lastTotal;
+  snap_lastTotal = totalRuntime;
   if (deltaTotal == 0) return cs;
 
   float delta0 = 0, delta1 = 0;
 
   for (UBaseType_t i = 0; i < n; i++) {
-    // Acha o runtime anterior desta task pelo handle
     uint32_t prevRuntime = 0;
     for (UBaseType_t j = 0; j < snap_count; j++) {
       if (snap_handles[j] == tasks[i].xHandle) {
@@ -138,32 +124,24 @@ CoreStats getCoreStats() {
         break;
       }
     }
-    uint32_t delta = tasks[i].ulRunTimeCounter - prevRuntime;
-
-    // xCoreID: 0 ou 1 para tasks fixadas; tskNO_AFFINITY (0x7FFFFFFF) para tasks flutuantes
-    BaseType_t core = tasks[i].xCoreID;
-    if (core == 0) delta0 += delta;
-    else           delta1 += delta; // inclui tskNO_AFFINITY no core 1 (onde o loop() roda)
+    float delta = (float)(tasks[i].ulRunTimeCounter - prevRuntime);
+    if (tasks[i].xCoreID == 0) delta0 += delta;
+    else                        delta1 += delta;
   }
 
-  // Salva snapshot atual
   snap_count = (n < MAX_TASKS) ? n : MAX_TASKS;
   for (UBaseType_t i = 0; i < snap_count; i++) {
-    snap_handles[i]  = tasks[i].xHandle;
-    snap_runtime[i]  = tasks[i].ulRunTimeCounter;
+    snap_handles[i] = tasks[i].xHandle;
+    snap_runtime[i] = tasks[i].ulRunTimeCounter;
   }
 
-  // O ESP32 tem dois núcleos — divide o deltaTotal igualmente entre eles
-  float halfTotal = deltaTotal / 2.0f;
+  float halfTotal = (float)deltaTotal / 2.0f;
   cs.uso0 = constrain((delta0 / halfTotal) * 100.0f, 0.0f, 100.0f);
   cs.uso1 = constrain((delta1 / halfTotal) * 100.0f, 0.0f, 100.0f);
   return cs;
 }
 
-// ─────────────────────────────────────────────
-// Página HTML do WebServer
-// Auto-refresh a cada 65s para sempre mostrar o último sorteio
-// ─────────────────────────────────────────────
+// ─── PÁGINA HTML ───────────────────────────────────────────────────
 void handleRoot() {
   String html = R"rawhtml(
 <!DOCTYPE html><html lang="pt-BR">
@@ -193,132 +171,112 @@ void handleRoot() {
        background:#00e5ff;margin-right:6px;animation:blink 1.2s infinite}
   @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
   .footer{color:#333;font-size:.65rem;margin-top:24px;text-align:center;line-height:1.8}
+  .nodata{color:#444;text-align:center;padding:20px;font-size:.85rem}
   .temp-bar-bg{background:#1e1e1e;border-radius:4px;height:6px;width:100%;margin-top:6px}
-  .temp-bar{height:6px;border-radius:4px;background:linear-gradient(90deg,#00e5ff,#ff6d00);transition:width .5s}
-  .temp-val{font-size:1.6rem;font-weight:bold;color:#ff6d00}
+  .temp-bar{height:6px;border-radius:4px;transition:width .5s}
+  .temp-val{font-size:1.6rem;font-weight:bold}
   .cpu-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
   .cpu-label{color:#555;font-size:.7rem;width:56px;flex-shrink:0}
   .cpu-bar-bg{flex:1;background:#1e1e1e;border-radius:4px;height:8px}
   .cpu-bar{height:8px;border-radius:4px;transition:width .5s}
-  .cpu-pct{color:#fff;font-size:.8rem;width:38px;text-align:right;flex-shrink:0}
-  .nodata{color:#444;text-align:center;padding:20px;font-size:.85rem}
+  .cpu-pct{color:#fff;font-size:.8rem;width:42px;text-align:right;flex-shrink:0}
 </style>
 </head>
 <body>
-<h1>⚡ CaosForge</h1>
-<p class="sub">ESP32 · HMAC-SHA256 · LIVE</p>
+<h1>&#x26A1; CaosForge</h1>
+<p class="sub">ESP32 &#xB7; HMAC-SHA256 &#xB7; LIVE</p>
 )rawhtml";
 
   if (!temDados) {
     html += "<div class='card'><p class='nodata'>Aguardando primeiro sorteio...</p></div>";
   } else {
-    // Números
-    html += "<div class='card'>";
-    html += "<div class='label'>Último Sorteio</div>";
-    html += "<div class='numbers'>";
-    for (int i = 0; i < 6; i++) {
+    // Sorteio
+    html += "<div class='card'><div class='label'>&#xDAltimo Sorteio</div><div class='numbers'>";
+    for (int i = 0; i < 6; i++)
       html += "<div class='ball'>" + String(ultimo.numeros[i]) + "</div>";
-    }
     html += "</div></div>";
 
     // Metadados
     html += "<div class='card'>";
     html += "<div class='row'><span class='muted'>Timestamp</span><span class='val'>" + String(ultimo.timestamp) + "</span></div>";
-    html += "<div class='row'><span class='muted'>Semente</span><span class='val'>" + String(ultimo.semente) + "</span></div>";
-    html += "<div class='row'><span class='muted'>Sorteios</span><span class='val'>" + String(ultimo.total) + "</span></div>";
+    html += "<div class='row'><span class='muted'>Semente</span><span class='val'>"   + String(ultimo.semente)   + "</span></div>";
+    html += "<div class='row'><span class='muted'>Sorteios</span><span class='val'>"  + String(ultimo.total)     + "</span></div>";
     html += "</div>";
 
     // Hash
-    html += "<div class='card'>";
-    html += "<div class='label'>HMAC-SHA256</div>";
-    html += "<div class='hash'>" + String(ultimo.hash) + "</div>";
-    html += "</div>";
+    html += "<div class='card'><div class='label'>HMAC-SHA256</div>";
+    html += "<div class='hash'>" + String(ultimo.hash) + "</div></div>";
 
-    // Temperatura do CPU
-    float t = ultimo.tempCPU;
-    // Barra: faixa normal 40–80°C mapeada para 0–100%
-    int pct = constrain((int)((t - 30) / 60.0f * 100), 0, 100);
-    String corTemp = t < 55 ? "#00e5ff" : t < 70 ? "#ffb300" : "#f44336";
-    html += "<div class='card'>";
-    html += "<div class='label'>Temperatura do Die (CPU)</div>";
+    // Temperatura
+    float  t   = ultimo.tempCPU;
+    int    pct = constrain((int)((t - 30) / 60.0f * 100), 0, 100);
+    String corT = t < 55 ? "#00e5ff" : t < 70 ? "#ffb300" : "#f44336";
+    html += "<div class='card'><div class='label'>Temperatura do Die (CPU)</div>";
     html += "<div class='row' style='align-items:baseline'>";
-    html += "<span class='temp-val' style='color:" + corTemp + "'>" + String(t, 1) + "°C</span>";
-    html += "<span class='muted' style='margin-left:10px'>die interno · ±5–10°C de imprecisão</span>";
+    html += "<span class='temp-val' style='color:" + corT + "'>" + String(t, 1) + "&#xB0;C</span>";
+    html += "<span class='muted' style='margin-left:10px'>die interno &#xB7; &#xB15;5&#x2013;10&#xB0;C</span>";
     html += "</div>";
-    html += "<div class='temp-bar-bg'><div class='temp-bar' style='width:" + String(pct) + "%;background:" + corTemp + "'></div></div>";
+    html += "<div class='temp-bar-bg'><div class='temp-bar' style='width:" + String(pct) + "%;background:" + corT + "'></div></div>";
     html += "</div>";
   }
 
-  // Card de uso dos núcleos
-  CoreStats cs = getCoreStats();
-  String cor0 = cs.uso0 < 60 ? "#00e5ff" : cs.uso0 < 85 ? "#ffb300" : "#f44336";
-  String cor1 = cs.uso1 < 60 ? "#00e5ff" : cs.uso1 < 85 ? "#ffb300" : "#f44336";
-  html += "<div class='card'>";
-  html += "<div class='label'>Núcleos do Processador · " + String(cs.freq) + " MHz</div>";
-  // Core 0
-  html += "<div class='cpu-row'>";
-  html += "<span class='cpu-label'>Core 0</span>";
+  // Núcleos — sempre visível
+  CoreStats cs  = getCoreStats();
+  String    cor0 = cs.uso0 < 60 ? "#00e5ff" : cs.uso0 < 85 ? "#ffb300" : "#f44336";
+  String    cor1 = cs.uso1 < 60 ? "#00e5ff" : cs.uso1 < 85 ? "#ffb300" : "#f44336";
+  html += "<div class='card'><div class='label'>N&#xFA;cleos &#xB7; " + String(cs.freq) + " MHz</div>";
+  html += "<div class='cpu-row'><span class='cpu-label'>Core 0</span>";
   html += "<div class='cpu-bar-bg'><div class='cpu-bar' style='width:" + String((int)cs.uso0) + "%;background:" + cor0 + "'></div></div>";
-  html += "<span class='cpu-pct' style='color:" + cor0 + "'>" + String(cs.uso0, 1) + "%</span>";
-  html += "</div>";
-  // Core 1
-  html += "<div class='cpu-row' style='margin-bottom:0'>";
-  html += "<span class='cpu-label'>Core 1</span>";
+  html += "<span class='cpu-pct' style='color:" + cor0 + "'>" + String(cs.uso0, 1) + "%</span></div>";
+  html += "<div class='cpu-row' style='margin-bottom:0'><span class='cpu-label'>Core 1</span>";
   html += "<div class='cpu-bar-bg'><div class='cpu-bar' style='width:" + String((int)cs.uso1) + "%;background:" + cor1 + "'></div></div>";
-  html += "<span class='cpu-pct' style='color:" + cor1 + "'>" + String(cs.uso1, 1) + "%</span>";
-  html += "</div>";
-  html += "<div style='margin-top:10px;color:#333;font-size:.65rem'>Core 0 = Forja de Caos &nbsp;·&nbsp; Core 1 = Oráculo + WebServer</div>";
-  html += "</div>";
-
-  // Status do sistema
-  html += "<div class='card'>";
-  html += "<div class='label'>Sistema</div>";
-  html += "<div class='row'><span class='muted'>IP</span><span class='val'>" + WiFi.localIP().toString() + "</span></div>";
-  html += "<div class='row'><span class='muted'>Uptime</span><span class='val'>" + String(millis() / 1000) + "s</span></div>";
-  html += "<div class='row'><span class='muted'>RSSI WiFi</span><span class='val'>" + String(WiFi.RSSI()) + " dBm</span></div>";
-  html += "<div class='row'><span class='muted'>Heap livre</span><span class='val'>" + String(ESP.getFreeHeap() / 1024) + " KB</span></div>";
-  html += "<div class='row'><span class='muted'>Status</span><span class='val'><span class='dot'></span>Online</span></div>";
+  html += "<span class='cpu-pct' style='color:" + cor1 + "'>" + String(cs.uso1, 1) + "%</span></div>";
+  html += "<div style='margin-top:10px;color:#333;font-size:.65rem'>Core 0 = Forja de Caos &nbsp;&#xB7;&nbsp; Core 1 = Or&#xE1;culo + WebServer</div>";
   html += "</div>";
 
-  html += "<p class='footer'>Atualiza automaticamente a cada 65s<br>ESP32 CaosForge · github.com/deletrr/Esp32CaosForge</p>";
+  // Sistema
+  html += "<div class='card'><div class='label'>Sistema</div>";
+  html += "<div class='row'><span class='muted'>IP</span><span class='val'>"         + WiFi.localIP().toString()         + "</span></div>";
+  html += "<div class='row'><span class='muted'>Uptime</span><span class='val'>"     + String(millis() / 1000) + "s"     + "</span></div>";
+  html += "<div class='row'><span class='muted'>RSSI WiFi</span><span class='val'>"  + String(WiFi.RSSI())  + " dBm"    + "</span></div>";
+  html += "<div class='row'><span class='muted'>Heap livre</span><span class='val'>" + String(ESP.getFreeHeap()/1024) + " KB" + "</span></div>";
+  html += "<div class='row' style='margin-bottom:0'><span class='muted'>Status</span><span class='val'><span class='dot'></span>Online</span></div>";
+  html += "</div>";
+
+  html += "<p class='footer'>Atualiza a cada 65s &#xB7; github.com/deletrr/Esp32CaosForge</p>";
   html += "</body></html>";
 
   server.send(200, "text/html", html);
 }
 
-// Endpoint JSON puro — útil para integrar com outras ferramentas
+// ─── ENDPOINT JSON ─────────────────────────────────────────────────
 void handleJson() {
   if (!temDados) {
     server.send(200, "application/json", "{\"status\":\"aguardando\"}");
     return;
   }
   CoreStats cs = getCoreStats();
-  String json = "{\"semente\":" + String(ultimo.semente) +
-                ",\"hash\":\"" + String(ultimo.hash) + "\"" +
-                ",\"timestamp\":\"" + String(ultimo.timestamp) + "\"" +
-                ",\"total\":" + String(ultimo.total) +
-                ",\"temp_cpu\":" + String(ultimo.tempCPU, 1) +
-                ",\"cpu_freq_mhz\":" + String(cs.freq) +
-                ",\"core0_pct\":" + String(cs.uso0, 1) +
-                ",\"core1_pct\":" + String(cs.uso1, 1) +
-                ",\"numeros\":[" +
+  String json = "{\"semente\":"      + String(ultimo.semente)   +
+                ",\"hash\":\""       + String(ultimo.hash)       + "\"" +
+                ",\"timestamp\":\""  + String(ultimo.timestamp)  + "\"" +
+                ",\"total\":"        + String(ultimo.total)      +
+                ",\"temp_cpu\":"     + String(ultimo.tempCPU, 1) +
+                ",\"cpu_freq_mhz\":" + String(cs.freq)           +
+                ",\"core0_pct\":"    + String(cs.uso0, 1)        +
+                ",\"core1_pct\":"    + String(cs.uso1, 1)        +
+                ",\"numeros\":["     +
                 String(ultimo.numeros[0]) + "," + String(ultimo.numeros[1]) + "," +
                 String(ultimo.numeros[2]) + "," + String(ultimo.numeros[3]) + "," +
                 String(ultimo.numeros[4]) + "," + String(ultimo.numeros[5]) + "]}";
   server.send(200, "application/json", json);
 }
 
-// ─────────────────────────────────────────────
-// Sorteio + envio para Node-RED
-// ─────────────────────────────────────────────
+// ─── SORTEIO + ENVIO ───────────────────────────────────────────────
 void realizarSorteioEEnviar() {
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.begin(ssid, password);
-    return;
-  }
+  if (WiFi.status() != WL_CONNECTED) { WiFi.begin(ssid, password); return; }
 
   uint32_t semente_capturada = capturarEntropia() ^ (uint32_t)micros() ^ esp_random();
-  const char* chave_secreta  = "SALT"; // Substitua por uma chave forte
+  const char* chave_secreta  = "SALT";
 
   uint8_t hash_final[32];
   mbedtls_md_context_t ctx;
@@ -329,8 +287,7 @@ void realizarSorteioEEnviar() {
   mbedtls_md_hmac_finish(&ctx, hash_final);
   mbedtls_md_free(&ctx);
 
-  int numeros[6];
-  int encontrados = 0, byte_idx = 0;
+  int numeros[6], encontrados = 0, byte_idx = 0;
   while (encontrados < 6) {
     if (byte_idx >= 32) {
       mbedtls_md_init(&ctx);
@@ -349,43 +306,37 @@ void realizarSorteioEEnviar() {
     if (!rep) numeros[encontrados++] = num;
   }
 
-  // Monta hash string
   char hashStr[65];
   for (int i = 0; i < 32; i++) sprintf(hashStr + i * 2, "%02x", hash_final[i]);
   hashStr[64] = '\0';
 
-  // Atualiza estado visível na web
   for (int i = 0; i < 6; i++) ultimo.numeros[i] = numeros[i];
-  ultimo.semente  = semente_capturada;
-  ultimo.tempCPU  = getTempCPU();
+  ultimo.semente = semente_capturada;
+  ultimo.tempCPU = getTempCPU();
   memcpy(ultimo.hash, hashStr, 65);
   ultimo.total++;
-  // Timestamp formatado: DD/MM/AAAA HH:MM:SS
-  // Nota: sem NTP o ESP32 conta a partir de 01/01/1970 — conecte NTP para hora real.
-  // Por ora usa uptime legível para não depender de servidor externo.
   String ts = getTimestamp();
   ts.toCharArray(ultimo.timestamp, sizeof(ultimo.timestamp));
   temDados = true;
 
-  // Serial print
+  CoreStats cs = getCoreStats();
+
   Serial.println("┌─────────────────────────────────────┐");
   Serial.printf( "│ Sorteio #%-27d │\n", ultimo.total);
   Serial.println("├─────────────────────────────────────┤");
   Serial.printf( "│ Números: %02d  %02d  %02d  %02d  %02d  %02d       │\n",
     numeros[0], numeros[1], numeros[2], numeros[3], numeros[4], numeros[5]);
-  Serial.printf( "│ Semente: %-27u │\n", semente_capturada);
+  Serial.printf( "│ Semente:  %-26u │\n", semente_capturada);
   Serial.println("│ Hash:                               │");
   Serial.printf( "│  %.37s │\n", hashStr);
-  Serial.printf( "│  %.37s │\n", hashStr + 37);  // segunda metade
-  Serial.printf( "│ URL: http://%-24s │\n", (WiFi.localIP().toString() + "/").c_str());
-  Serial.printf( "│ Temp CPU: %-26s │\n", (String(ultimo.tempCPU, 1) + " °C (die interno)").c_str());
-  CoreStats csSerial = getCoreStats();
-  Serial.printf( "│ Core 0: %-28s │\n", (String(csSerial.uso0, 1) + "% · Forja de Caos").c_str());
-  Serial.printf( "│ Core 1: %-28s │\n", (String(csSerial.uso1, 1) + "% · Oráculo + Web").c_str());
-  Serial.printf( "│ CPU Freq: %-26s │\n", (String(csSerial.freq) + " MHz").c_str());
+  Serial.printf( "│  %.37s │\n", hashStr + 37);
+  Serial.printf( "│ URL:  http://%-23s │\n", (WiFi.localIP().toString()+"/").c_str());
+  Serial.printf( "│ Temp: %-30s │\n", (String(ultimo.tempCPU,1)+" oC").c_str());
+  Serial.printf( "│ Core0: %-29s │\n", (String(cs.uso0,1)+"% Forja de Caos").c_str());
+  Serial.printf( "│ Core1: %-29s │\n", (String(cs.uso1,1)+"% Oraculo + Web").c_str());
+  Serial.printf( "│ Freq:  %-29s │\n", (String(cs.freq)+" MHz").c_str());
   Serial.println("└─────────────────────────────────────┘");
 
-  // Envia para Node-RED
   String jsonPayload = "{\"origem\":\"ESP32_Chaos\",\"semente\":" + String(semente_capturada) +
                        ",\"hash\":\"" + String(hashStr) + "\",\"numeros\":[" +
                        String(numeros[0]) + "," + String(numeros[1]) + "," +
@@ -397,27 +348,27 @@ void realizarSorteioEEnviar() {
   http.addHeader("Content-Type", "application/json");
   int code = http.POST(jsonPayload);
   http.end();
-
-  Serial.printf("→ Node-RED: HTTP %d\n\n", code);
+  Serial.printf("-> Node-RED: HTTP %d\n\n", code);
 }
 
-// ─────────────────────────────────────────────
+// ─── SETUP ─────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
+  memset(snap_handles, 0, sizeof(snap_handles));
+  memset(snap_runtime, 0, sizeof(snap_runtime));
+  ultimo.total = 0;
 
   WiFi.begin(ssid, password);
   Serial.print("Conectando ao WiFi");
   while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
   Serial.println();
 
-  // Sincroniza hora via NTP
   configTime(gmtOffset, dstOffset, ntpServer);
   Serial.print("Sincronizando NTP");
   struct tm t;
   while (!getLocalTime(&t)) { delay(500); Serial.print("."); }
-  Serial.println(" OK — " + getTimestamp());
+  Serial.println(" OK - " + getTimestamp());
 
-  // Rotas do WebServer
   server.on("/",     handleRoot);
   server.on("/json", handleJson);
   server.begin();
@@ -425,19 +376,17 @@ void setup() {
   Serial.println("┌─────────────────────────────────────┐");
   Serial.println("│        ESP32 CaosForge Online        │");
   Serial.println("├─────────────────────────────────────┤");
-  Serial.printf( "│ IP:   %-30s│\n", (WiFi.localIP().toString()).c_str());
-  Serial.printf( "│ Web:  http://%-23s│\n", (WiFi.localIP().toString() + "/").c_str());
-  Serial.printf( "│ JSON: http://%-23s│\n", (WiFi.localIP().toString() + "/json").c_str());
+  Serial.printf( "│ IP:   %-30s│\n", WiFi.localIP().toString().c_str());
+  Serial.printf( "│ Web:  http://%-23s│\n", (WiFi.localIP().toString()+"/").c_str());
+  Serial.printf( "│ JSON: http://%-23s│\n", (WiFi.localIP().toString()+"/json").c_str());
   Serial.println("└─────────────────────────────────────┘\n");
 
   xTaskCreatePinnedToCore(taskGeradoraDeCaos, "UsinaCaos", 4096, NULL, 1, NULL, 0);
-
-  ultimo.total = 0;
 }
 
-// ─────────────────────────────────────────────
+// ─── LOOP ──────────────────────────────────────────────────────────
 void loop() {
-  server.handleClient(); // mantém o webserver respondendo
+  server.handleClient();
 
   if (millis() - ultimaExecucao >= intervalo) {
     ultimaExecucao = millis();
