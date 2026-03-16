@@ -225,7 +225,7 @@ O ESP32 possui um sensor de temperatura interno que mede o **die do chip** — o
 A função utilizada é a da própria Espressif, exposta via `extern "C"`:
 
 ```cpp
-extern "C" uint8_t temprature_sens_read(); // typo intencional — é o nome oficial do SDK
+extern "C" uint8_t temprature_sens_read(); 
 
 float getTempCPU() {
   return (temprature_sens_read() - 32) / 1.8f; // converte Fahrenheit → Celsius
