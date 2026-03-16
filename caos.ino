@@ -41,12 +41,12 @@ struct CoreStats {
 //  CONFIGURAÇÕES — edite antes de fazer upload
 // ══════════════════════════════════════════════════════════════════════
 
-const char* SSID         = "SEU_WIFI";
+const char* SSID         = "SEU_SSID";
 const char* PASSWORD     = "SUA_SENHA";
-const char* SERVER_URL   = "http://192.168.x.x:1880/caos";
+const char* SERVER_URL   = "http://192.168.xxx.xx:1880/caos";
 
 // [2] Bearer Token — mesmo valor que TOKEN_ESPERADO no Node-RED
-const char* BEARER_TOKEN = "TROQUE_POR_TOKEN_SECRETO_AQUI";
+const char* BEARER_TOKEN = "PALMEIRAS";
 
 // ─── CONSTANTES ────────────────────────────────────────────────────────
 const long     INTERVALO_MS    = 60000UL;
@@ -533,4 +533,3 @@ void loop() {
   }
   delay(100);
 }
-
