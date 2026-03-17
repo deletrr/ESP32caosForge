@@ -19,31 +19,11 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 530,
+        "x": 550,
         "y": 160,
         "wires": [
             [
                 "bbf7fdb2bedd6f0d"
-            ]
-        ]
-    },
-    {
-        "id": "abbf07dbd781b18c",
-        "type": "function",
-        "z": "9c0e31f49b46727f",
-        "name": "🔑 Adicionar Token GAS",
-        "func": "const GAS_TOKEN = env.get('GAS_TOKEN');\nconst GAS_URL = env.get('GAS_URL');\n\n// Monta o payload como string JSON (http request espera string ou buffer)\nmsg.payload = JSON.stringify(msg.payload);\nmsg.headers = { 'Content-Type': 'application/json' };\n\n// Remove msg.url para não conflitar com o campo do nó\ndelete msg.url;\ndelete msg.method;\n\nreturn msg;",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 1080,
-        "y": 440,
-        "wires": [
-            [
-                "d74cb6045b896fec"
             ]
         ]
     },
@@ -57,7 +37,7 @@
         "upload": false,
         "skipBodyParsing": false,
         "swaggerDoc": "",
-        "x": 410,
+        "x": 330,
         "y": 160,
         "wires": [
             [
@@ -96,8 +76,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 820,
-        "y": 160,
+        "x": 920,
+        "y": 200,
         "wires": [
             [
                 "d5932b4178822873"
@@ -112,7 +92,7 @@
         "property": "payload",
         "action": "obj",
         "pretty": false,
-        "x": 650,
+        "x": 730,
         "y": 160,
         "wires": [
             [
@@ -140,8 +120,8 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 830,
-        "y": 200,
+        "x": 930,
+        "y": 240,
         "wires": []
     },
     {
@@ -172,8 +152,8 @@
         "font": "",
         "fontSize": 16,
         "color": "#000000",
-        "x": 1010,
-        "y": 80,
+        "x": 1110,
+        "y": 120,
         "wires": []
     },
     {
@@ -188,8 +168,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 820,
-        "y": 120,
+        "x": 920,
+        "y": 160,
         "wires": [
             [
                 "d8c9023a6ee0608b"
@@ -208,8 +188,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 810,
-        "y": 80,
+        "x": 910,
+        "y": 120,
         "wires": [
             [
                 "9128e886de7194b8"
@@ -233,8 +213,8 @@
         "font": "",
         "fontSize": 16,
         "color": "#000000",
-        "x": 1020,
-        "y": 120,
+        "x": 1120,
+        "y": 160,
         "wires": []
     },
     {
@@ -254,8 +234,8 @@
         "font": "",
         "fontSize": 16,
         "color": "#000000",
-        "x": 1010,
-        "y": 160,
+        "x": 1110,
+        "y": 200,
         "wires": []
     },
     {
@@ -270,8 +250,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 810,
-        "y": 240,
+        "x": 910,
+        "y": 280,
         "wires": [
             [
                 "fbac0729d72cdead"
@@ -283,10 +263,10 @@
         "type": "http request",
         "z": "9c0e31f49b46727f",
         "name": "",
-        "method": "POST",
+        "method": "use",
         "ret": "txt",
         "paytoqs": "ignore",
-        "url": "{{env.GAS_URL}}?token={{env.GAS_TOKEN}}",
+        "url": "",
         "tls": "",
         "persist": false,
         "proxy": "",
@@ -294,8 +274,8 @@
         "authType": "",
         "senderr": false,
         "headers": [],
-        "x": 1320,
-        "y": 440,
+        "x": 1420,
+        "y": 480,
         "wires": [
             [
                 "b7d49ddf85ba6095"
@@ -315,8 +295,8 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 1510,
-        "y": 440,
+        "x": 1610,
+        "y": 480,
         "wires": []
     },
     {
@@ -332,8 +312,8 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 970,
-        "y": 240,
+        "x": 1070,
+        "y": 280,
         "wires": []
     },
     {
@@ -348,8 +328,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 840,
-        "y": 380,
+        "x": 940,
+        "y": 420,
         "wires": [
             [
                 "5f3cc670ec03e5e4"
@@ -369,8 +349,8 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 980,
-        "y": 380,
+        "x": 1080,
+        "y": 420,
         "wires": []
     },
     {
@@ -385,8 +365,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 830,
-        "y": 440,
+        "x": 930,
+        "y": 480,
         "wires": [
             [
                 "8306e84989cab325",
@@ -399,7 +379,7 @@
         "type": "debug",
         "z": "9c0e31f49b46727f",
         "name": "IA analise",
-        "active": false,
+        "active": true,
         "tosidebar": true,
         "console": false,
         "tostatus": false,
@@ -407,8 +387,8 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 880,
-        "y": 500,
+        "x": 980,
+        "y": 540,
         "wires": []
     },
     {
@@ -423,8 +403,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 910,
-        "y": 560,
+        "x": 1010,
+        "y": 600,
         "wires": [
             [
                 "2f056ddc4796e620"
@@ -447,8 +427,45 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 1240,
-        "y": 560,
+        "x": 1340,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "abbf07dbd781b18c",
+        "type": "function",
+        "z": "9c0e31f49b46727f",
+        "name": "🔑 Adicionar Token GAS",
+        "func": "const GAS_TOKEN = env.get('GAS_TOKEN');\nconst GAS_URL = env.get('GAS_URL');\n\nif (!GAS_URL || !GAS_TOKEN) {\n    node.error('GAS_URL ou GAS_TOKEN não configurados');\n    return null;\n}\n\n// Garante que o timestamp sempre existe no payload\n// independente de qual caminho (IA ou MONITOR) chegou aqui\nif (!msg.payload.timestamp) {\n    const now = new Date();\n    const p = n => String(n).padStart(2, '0');\n    msg.payload.timestamp = `${p(now.getDate())}/${p(now.getMonth() + 1)}/${now.getFullYear()} ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;\n}\n\nmsg.url = GAS_URL + '?token=' + GAS_TOKEN;\nmsg.method = 'POST';\nmsg.payload = JSON.stringify(msg.payload);\nmsg.headers = { 'Content-Type': 'application/json' };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1170,
+        "y": 480,
+        "wires": [
+            [
+                "d74cb6045b896fec",
+                "69846de218361bbd"
+            ]
+        ]
+    },
+    {
+        "id": "69846de218361bbd",
+        "type": "debug",
+        "z": "9c0e31f49b46727f",
+        "name": "debug 3",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1330,
+        "y": 540,
         "wires": []
     },
     {
@@ -611,7 +628,7 @@
         "hidden": false
     },
     {
-        "id": "a2e9984731d1a79d",
+        "id": "02173583bf51e7b5",
         "type": "global-config",
         "env": [],
         "modules": {
