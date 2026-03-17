@@ -1,31 +1,32 @@
 # ⚡ ESP32 CaosForge
 
+> **Gerador de entropia física com sorteio criptográfico verificável, autenticação em toda a cadeia e monitoramento estatístico em tempo real via Node-RED e Google Sheets.**
+
+[![Platform](https://img.shields.io/badge/platform-ESP32-blue?style=flat-square)](https://www.espressif.com/en/products/socs/esp32)
+[![Framework](https://img.shields.io/badge/framework-Arduino-teal?style=flat-square)](https://www.arduino.cc/)
+[![Node-RED](https://img.shields.io/badge/Node--RED-3.x-red?style=flat-square)](https://nodered.org/)
+[![Version](https://img.shields.io/badge/versão-2.3-brightgreen?style=flat-square)](#)
+[![License](https://img.shields.io/badge/license-Open%20Source-green?style=flat-square)](#)
+
+
 ## 📈 Dados ao vivo
 
 Os sorteios são registrados em tempo real nesta planilha pública:
 
 🔗 **[Acessar Google Sheets](https://docs.google.com/spreadsheets/d/1qoPtb4fNSjBl3aQU2CqS8u9W14VDHrp8trGWmSIrbM0/edit?usp=sharing)**
 
----
-
-> **Gerador de entropia física com sorteio criptográfico verificável, autenticação em toda a cadeia e monitoramento estatístico em tempo real via Node-RED e Google Sheets.**
-
-[![Platform](https://img.shields.io/badge/platform-ESP32-blue?style=flat-square)](https://www.espressif.com/en/products/socs/esp32)
-[![Framework](https://img.shields.io/badge/framework-Arduino-teal?style=flat-square)](https://www.arduino.cc/)
-[![Node-RED](https://img.shields.io/badge/Node--RED-3.x-red?style=flat-square)](https://nodered.org/)
-[![Version](https://img.shields.io/badge/versão-2.2-brightgreen?style=flat-square)](#)
-[![License](https://img.shields.io/badge/license-Open%20Source-green?style=flat-square)](#)
 
 ---
 
 ## 📋 Índice
 
 - [O que é](#-o-que-é)
-- [O que mudou na v2.2](#-o-que-mudou-na-v22)
+- [Histórico de versões](#-histórico-de-versões)
 - [Como funciona](#-como-funciona)
 - [Arquitetura do sistema](#-arquitetura-do-sistema)
 - [Segurança criptográfica](#-segurança-criptográfica)
 - [Autenticação em toda a cadeia](#-autenticação-em-toda-a-cadeia)
+- [Concorrência entre tasks](#-concorrência-entre-tasks)
 - [Monitor de Integridade](#-monitor-de-integridade)
 - [WebServer embutido](#-webserver-embutido)
 - [Temperatura do die (CPU)](#-temperatura-do-die-cpu)
@@ -35,6 +36,7 @@ Os sorteios são registrados em tempo real nesta planilha pública:
 - [Solução de problemas](#-solução-de-problemas)
 - [Estrutura do repositório](#-estrutura-do-repositório)
 - [Fundamentos teóricos](#-fundamentos-teóricos)
+
 
 ---
 
@@ -46,41 +48,43 @@ O resultado é um pipeline completo de sorteio auditável e autenticado:
 
 ```
 [Entropia Física] → [HMAC-SHA256 / chave NVS] → [Sorteio 1–60]
-      → [Bearer Token] → [Node-RED] → [env vars + token] → [Google Sheets]
+  → [Bearer Token] → [Node-RED] → [env vars + token] → [Google Sheets]
 ```
 
-Cada sorteio é acompanhado de uma assinatura HMAC que permite verificação criptográfica independente. Toda a comunicação entre componentes é autenticada por token — sem autenticação, nenhum dado é processado. Os tokens **nunca aparecem no `flows.json`** exportado.
+Cada sorteio é acompanhado de uma assinatura HMAC que permite verificação criptográfica independente. Toda a comunicação entre componentes é autenticada por token. Os tokens **nunca aparecem no `flows.json`** exportado.
 
 ---
 
-## 🆕 O que mudou na v2.2
+## 🗂️ Histórico de versões
 
-### Segurança
+### v2.3 — Segurança e concorrência (atual)
 
-| # | Problema | Solução |
-|---|---|---|
-| 1 | Chave HMAC hardcoded no `.ino` | Gerada no 1º boot e salva na **NVS**. Nunca aparece no código-fonte. |
-| 2 | POST ao Node-RED sem autenticação | **Bearer Token** no header `Authorization`. |
-| 3 | Token GAS hardcoded no `flows.json` | **Variáveis de ambiente** do Node-RED — tokens não aparecem no export do fluxo. |
+| # | O que foi corrigido |
+|---|---|
+| 1 | `/info` não expõe mais a `hmac_key` — exibir a chave anularia a segurança do HMAC |
+| 2 | Bearer Token obrigatório com **mínimo de 32 caracteres** — verificado no boot com aviso no Serial |
+| 3 | `SemaphoreHandle_t ultimoMtx` protege a struct `UltimoSorteio` entre tasks (substituiu `portENTER_CRITICAL`, que causa deadlock entre tasks no mesmo core) |
+| 4 | `SemaphoreHandle_t snapMtx` protege os arrays de CPU stats entre tasks pelo mesmo motivo |
+| 5 | **Timestamp incluído no payload POST** — ativa a proteção anti-replay no Google Apps Script |
+| 6 | `resetarChaveHMAC()` compilada somente com `-DRESET_HMAC_KEY` — elimina o risco de apagar a chave NVS acidentalmente |
+| 7 | **Escape JSON** aplicado nos campos de string do payload — previne quebra de JSON por caracteres especiais no hash ou timestamp |
 
-### Robustez (correções do DOIT ESP32 DEVKIT V1)
+### v2.2 — Tokens via variáveis de ambiente no Node-RED
 
-| # | Problema | Solução |
-|---|---|---|
-| 4 | WebServer bloqueava o `loop()` | **Task FreeRTOS dedicada** no Core 1. |
-| 5 | Primeiro sorteio com entropia imatura | Aguarda **10.000 iterações** antes do 1º sorteio. |
-| 6 | `tan()` podia gerar NaN/Inf | **Guard `isfinite()`** com fallback para `esp_random()`. |
-| 7 | SPIFFS causava reboot loop | **SPIFFS removido** — API de diretórios incompatível com a partição padrão do DOIT V1. |
-| 8 | Reboot logo após NVS | **`delay(1500)`** para o CP2102 estabilizar no boot. |
-| 9 | Task de entropia matava o watchdog | **`vTaskDelay(1)`** restaurado a cada iteração. |
+Tokens do Node-RED movidos para variáveis de ambiente (`env.get()`), de forma que não aparecem no `flows.json` exportado.
 
-### Correções de integração
+### v2.1 — Robustez e compatibilidade com DOIT ESP32 DEVKIT V1
 
-| # | Problema | Solução |
-|---|---|---|
-| 10 | `msg.url` não funciona no Node-RED 3.x | URL configurada no **campo do nó** com sintaxe mustache `{{{env.VAR}}}`. |
-| 11 | MONITOR com `outputs: 1` e `return [msg1, msg2]` | **`outputs: 2`** — saída 0 → debug, saída 1 → Google Sheets. |
-| 12 | `SHEET_ID` duplicado no Apps Script | Script colado em arquivo único após apagar tudo. |
+- Chave HMAC persistente em NVS (nunca hardcoded)
+- Bearer Token autentica o POST ao Node-RED
+- WebServer em task FreeRTOS dedicada
+- Entropia mínima de 10.000 iterações antes do 1º sorteio
+- Guard NaN/Inf no `tan()` do amplificador caótico
+- SPIFFS removido (causava reboot loop no DOIT V1)
+- `delay(1500)` no boot para o CP2102 estabilizar
+- `vTaskDelay(1)` restaurado para alimentar o watchdog
+- Bug do MONITOR corrigido: `outputs: 2` com wires separados
+- `{{{env.VAR}}}` no campo URL do nó http request
 
 ---
 
@@ -88,7 +92,7 @@ Cada sorteio é acompanhado de uma assinatura HMAC que permite verificação cri
 
 ### Core 0 — A Forja de Caos
 
-Roda em loop com `vTaskDelay(1)` para alimentar o watchdog. A cada iteração, combina três fontes via XOR:
+Roda em loop com `vTaskDelay(1)`. A cada iteração combina três fontes via XOR:
 
 ```cpp
 uint32_t novo = esp_random() ^ (uint32_t)micros();
@@ -101,17 +105,19 @@ uint32_t amplificado = (isfinite(tv) && !isnan(tv))
 
 entropia_viva  ^= novo ^ amplificado;
 contadorEntrop++;
+vTaskDelay(1);  // obrigatório: alimenta watchdog, cede CPU ao idle task
 ```
 
 ### Core 1 — O Oráculo
 
-A cada 60 segundos, após o pool atingir 10.000 iterações:
+A cada 60 segundos, após 10.000 iterações acumuladas:
 
-1. Captura `entropia_viva` com spinlock FreeRTOS
+1. Captura `entropia_viva` com `portENTER_CRITICAL` (spinlock — correto para variável compartilhada entre cores)
 2. Combina com `micros()` e `esp_random()` para a semente final
 3. Gera **HMAC-SHA256** usando a chave da NVS
 4. Sorteia 6 números únicos de 1 a 60 sem viés estatístico
-5. Envia via HTTP POST com **Bearer Token** no header
+5. Escreve o resultado na struct `UltimoSorteio` **protegida por mutex FreeRTOS**
+6. Envia via HTTP POST com Bearer Token e timestamp
 
 ### WebServer — Task independente
 
@@ -124,9 +130,7 @@ void taskWebServer(void* pvParameters) {
 }
 ```
 
-### Por que HMAC e não SHA-256 simples?
-
-O HMAC (RFC 2104) é resistente a *length extension attacks*. Com a chave armazenada na NVS e nunca exposta no código, ninguém consegue forjar hashes mesmo capturando todos os sorteios transmitidos.
+Roda no Core 1 com stack de 10KB. Lê a struct `UltimoSorteio` **sempre via mutex**, garantindo que nunca lê dados parcialmente escritos.
 
 ---
 
@@ -143,32 +147,34 @@ O HMAC (RFC 2104) é resistente a *length extension attacks*. Com a chave armaze
 │  │  esp_random()  │      │  Espera 10k iterações      │  │
 │  │  micros()      │      │  HMAC-SHA256 / chave NVS   │  │
 │  │  tan(caos)     │      │  Sorteio 1–60 sem viés     │  │
-│  │  isfinite()    │      │  HTTP POST + Bearer Token  │  │
-│  │  vTaskDelay(1) │      │  WebServer :80 (task)      │  │
-│  └────────────────┘      └──────────────┬─────────────┘  │
-│  ┌────────────────┐                     │                 │
-│  │      NVS       │◀────────────────────┘                 │
-│  │  hmac_key[32]  │  (gerada no 1º boot, persiste)        │
-│  └────────────────┘                                       │
+│  │  isfinite()    │      │  escapeJson() no payload   │  │
+│  │  vTaskDelay(1) │      │  HTTP POST + Bearer Token  │  │
+│  └────────────────┘      │  timestamp (anti-replay)   │  │
+│                          │  WebServer :80 (task)      │  │
+│  ┌────────────────┐      └──────────────┬─────────────┘  │
+│  │      NVS       │◀────── hmac_key[32] │                 │
+│  └────────────────┘                     │                 │
+│  ┌─────────────────────────────────┐    │                 │
+│  │  SemaphoreHandle_t ultimoMtx   │◀───┘                 │
+│  │  SemaphoreHandle_t snapMtx     │  (FreeRTOS mutex)    │
+│  └─────────────────────────────────┘                      │
 └──────────────────────────────────┬───────────────────────┘
                     ┌──────────────┴──────────────────┐
-                    │ JSON POST                        │ HTTP GET
+                    │ POST /caos                       │ HTTP GET
                     │ Authorization: Bearer <token>    │
+                    │ payload com timestamp            │
                     ▼                                  ▼
      ┌──────────────────────────┐     ┌─────────────────────────┐
      │         Node-RED         │     │  Browser / rede local   │
-     │                          │     │  http://[IP]/           │
-     │  ✅ Verificar Bearer     │     │  http://[IP]/json       │
-     │  ↓  (env.BEARER_TOKEN)   │     │  http://[IP]/info       │
-     │  json parser             │     └─────────────────────────┘
-     │  ↓ ↓ ↓ ↓ ↓              │
-     │  [pipeline]              │
-     │  ↓ IA → http request     │
+     │  ✅ env.get(BEARER_TOKEN)│     │  http://[IP]/           │
+     │  ↓ json parser           │     │  http://[IP]/json       │
+     │  ↓ pipeline              │     │  http://[IP]/info       │
+     │  ↓ IA → http request     │     └─────────────────────────┘
      │  ↓ MONITOR (outputs: 2)  │
      │    ↓saída 0  ↓saída 1    │
      │   debug    http request  │
      └──────────────┬───────────┘
-    URL: {{{env.GAS_URL}}}?token={{{env.GAS_TOKEN}}}
+    {{{env.GAS_URL}}}?token={{{env.GAS_TOKEN}}}
                     │
          ┌──────────┴──────────┐
          ▼                     ▼
@@ -193,7 +199,31 @@ for (int i = 0; i < 32; i++) {
 prefs.putBytes("hmac_key", hmac_key, 32);
 ```
 
-A chave persiste após reflash enquanto a NVS não for formatada. Para visualizá-la acesse `http://[IP]/info` ou leia o Serial Monitor.
+A chave persiste após reflash enquanto a NVS não for formatada.
+
+### O endpoint `/info` não expõe a chave
+
+Versões anteriores retornavam `hmac_key_hex` no endpoint `/info`. Isso foi removido na v2.3 — exibir a chave HMAC publicamente anularia toda a segurança do sistema, já que qualquer um poderia recriar os hashes:
+
+```cpp
+// [6] hmac_key_hex NUNCA é retornada — apenas indica se está carregada
+bool chaveCarregada = (hmac_key_hex[0] != '\0');
+```
+
+A resposta do `/info` agora é:
+```json
+{
+  "versao": "2.3",
+  "hmac_key_carregada": true,
+  "hmac_fonte": "NVS",
+  "bearer_token_forte": true,
+  "entropia_iteracoes": 183420,
+  "entropia_minima": 10000,
+  "ip": "192.168.1.42",
+  "uptime_s": 3721,
+  "heap_livre_kb": 214
+}
+```
 
 ### Sorteio sem viés de módulo
 
@@ -203,65 +233,153 @@ Bytes válidos: 0–239  →  240 valores
 Bytes descartados: 240–255  →  eliminam viés de módulo
 ```
 
-### Proteção de race condition (dual-core)
+### Escape JSON no payload
 
 ```cpp
-portENTER_CRITICAL(&entropiaMux);
-val = entropia_viva;
-portEXIT_CRITICAL(&entropiaMux);
+String escapeJson(const char* s) {
+  // escapa: " \ \n \r \t
+}
+
+// Aplicado nos campos string antes do POST
+",\"hash\":\""      + escapeJson(hashStr)         + "\""
+",\"timestamp\":\"" + escapeJson(ultimo.timestamp) + "\""
 ```
 
-### Resetar a chave HMAC
+Previne que um hash com caracteres especiais quebre o JSON e cause comportamento inesperado no Node-RED ou no Apps Script.
 
-1. Adicione temporariamente no `setup()`: `resetarChaveHMAC();`
-2. Faça upload, anote a nova chave no Serial Monitor
-3. Remova a linha e faça upload novamente
+### Resetar a chave HMAC de forma segura
 
-> ⚠️ Resetar invalida todos os hashes históricos.
+Na v2.3, `resetarChaveHMAC()` só é compilada quando você define explicitamente a flag de build:
+
+```
+// No Arduino IDE: Sketch → Export Compiled Binary
+// Build flags (platformio.ini ou flags extras):
+-DRESET_HMAC_KEY
+```
+
+Isso elimina o risco de chamar a função acidentalmente no `setup()` e apagar a chave permanentemente. Após usar, remova a flag e compile novamente.
+
+> ⚠️ Resetar a chave invalida todos os hashes históricos — sorteios anteriores não podem mais ser verificados.
 
 ---
 
 ## 🔒 Autenticação em toda a cadeia
 
-O projeto usa três camadas de autenticação. Nenhum token aparece no `flows.json` exportado.
+### Camada 1 — ESP32 → Node-RED: Bearer Token (≥ 32 chars)
 
-### Camada 1 — ESP32 → Node-RED: Bearer Token
+Na v2.3, o firmware verifica no boot se o token tem pelo menos 32 caracteres e exibe aviso no Serial:
 
-O ESP32 envia o token no header HTTP:
 ```
-Authorization: Bearer SEU_TOKEN
+│ Bearer token forte (>=32): SIM              │
 ```
 
-O nó **"✅ Verificar Bearer Token"** lê o token de uma variável de ambiente:
+Se o token tiver menos de 32 caracteres:
+```
+│ Bearer token forte (>=32): NAO — TROQUE!   │
+```
+
+Gere um token forte com:
+```bash
+openssl rand -hex 32
+```
+
+O token vai no header de cada POST:
+```
+Authorization: Bearer <seu_token_32_chars>
+```
+
+### Camada 2 — Node-RED: variáveis de ambiente
+
+Os tokens ficam nas configurações locais do Node-RED e **não aparecem no `flows.json`** exportado:
+
+```
+≡ → Settings → Environment variables
+```
+
+| Nome | Valor |
+|---|---|
+| `BEARER_TOKEN` | token gerado com `openssl rand -hex 32` |
+| `GAS_TOKEN` | token diferente para o Google Sheets |
+| `GAS_URL` | URL do Apps Script (sem `?token=`) |
+
+No nó **"✅ Verificar Bearer Token"**:
 ```javascript
 const TOKEN_ESPERADO = env.get('BEARER_TOKEN');
 ```
 
-### Camada 2 — Node-RED → Google Sheets: Token na URL via variável de ambiente
-
-O nó **http request** usa sintaxe mustache para compor a URL em tempo de execução:
+No campo URL do nó **http request**:
 ```
 {{{env.GAS_URL}}}?token={{{env.GAS_TOKEN}}}
 ```
 
-O token e a URL ficam apenas nas configurações locais do Node-RED — nunca no `flows.json`.
+> Use **três chaves** `{{{ }}}` — com duas o Node-RED escapa `/` e `?` da URL, quebrando a requisição.
 
-### Camada 3 — Google Apps Script: Token no código do script
+### Camada 3 — Node-RED → Google Sheets: token + anti-replay
 
-O token no Apps Script fica no código-fonte do projeto, que é **privado por padrão** — só quem tem acesso de editor à sua conta Google consegue ler. Não é necessário usar variáveis de ambiente aqui.
+O Apps Script valida o token via `?token=` na URL e, a partir da v2.3, **rejeita payloads sem timestamp** (antes aceitava):
+
+```javascript
+function timestampRecente(tsString) {
+  if (!tsString) return false;  // v2.3: sem timestamp = rejeitado
+  // ...verifica se está dentro dos últimos 5 minutos
+  const dataRecebida = new Date(Date.UTC(y, m-1, d, h, min, s));
+  return Math.abs(new Date() - dataRecebida) < 5 * 60 * 1000;
+}
+```
+
+O timestamp usa **UTC** para comparação correta independente do fuso horário do servidor Node-RED.
+
+### Camada 4 — Apps Script: token no código-fonte (seguro)
+
+O token do Apps Script pode ficar hardcoded no código sem problema — o código-fonte do Apps Script é **privado por padrão** e só acessível por editores da sua conta Google:
 
 ```javascript
 const GAS_SECRET_TOKEN = "SEU_TOKEN_GAS";
 ```
 
-### Por que variáveis de ambiente no Node-RED mas não no Apps Script?
-
-| Local | Quem pode ver o código? | Risco de exposição |
+| Local | Quem pode ver? | Risco |
 |---|---|---|
-| `flows.json` | Qualquer pessoa que receba o arquivo exportado | Alto — export inclui tudo |
-| Apps Script | Apenas editores do seu Google Account | Baixo — código é privado |
+| `flows.json` exportado | Qualquer pessoa que receba o arquivo | Alto |
+| Variáveis de ambiente Node-RED | Apenas quem tem acesso ao servidor | Baixo |
+| Código do Apps Script | Apenas editores do seu Google Account | Baixo |
 
-Por isso as variáveis de ambiente são essenciais no Node-RED e desnecessárias no Apps Script.
+---
+
+## 🔄 Concorrência entre tasks
+
+A v2.3 corrigiu um problema silencioso nas versões anteriores: o uso de `portENTER_CRITICAL` (spinlock) para proteger dados compartilhados entre tasks diferentes.
+
+### Por que `portENTER_CRITICAL` era incorreto aqui
+
+`portENTER_CRITICAL` desativa interrupções no core local. Ele é adequado para proteger variáveis compartilhadas **entre uma ISR e uma task no mesmo core** (como `entropia_viva`, que é escrita a cada tick). Mas entre duas tasks normais em cores diferentes (o loop do Oráculo e a task do WebServer), ele pode causar **deadlock** se ambas tentarem adquirir o lock ao mesmo tempo.
+
+### Solução: `SemaphoreHandle_t` (mutex FreeRTOS)
+
+```cpp
+// Criados antes das tasks, no setup()
+ultimoMtx = xSemaphoreCreateMutex();  // protege UltimoSorteio
+snapMtx   = xSemaphoreCreateMutex();  // protege arrays de CPU stats
+
+// Escrita (Oráculo)
+xSemaphoreTake(ultimoMtx, portMAX_DELAY);
+ultimo = novoSorteio;
+xSemaphoreGive(ultimoMtx);
+
+// Leitura (WebServer)
+xSemaphoreTake(ultimoMtx, pdMS_TO_TICKS(50));
+UltimoSorteio snap = ultimo;  // cópia local — libera rápido
+xSemaphoreGive(ultimoMtx);
+```
+
+O WebServer usa `pdMS_TO_TICKS(50)` como timeout — se não conseguir o lock em 50ms, retorna HTTP 503 em vez de bloquear indefinidamente.
+
+### Mapa de proteção de dados compartilhados
+
+| Dado | Mecanismo | Por quê |
+|---|---|---|
+| `entropia_viva`, `contadorEntrop` | `portENTER_CRITICAL` (spinlock) | Compartilhado com ISR / operação atômica brevíssima |
+| `UltimoSorteio ultimo` | `SemaphoreHandle_t ultimoMtx` | Entre duas tasks normais — mutex evita deadlock |
+| Arrays `snap_runtime`, `snap_handles` | `SemaphoreHandle_t snapMtx` | Idem |
 
 ---
 
@@ -269,7 +387,7 @@ Por isso as variáveis de ambiente são essenciais no Node-RED e desnecessárias
 
 O Node-RED inclui um nó de **monitoramento estatístico contínuo** que analisa cada sorteio em busca de anomalias no hardware.
 
-> **Importante:** O nó MONITOR DE INTEGRIDADE deve ter **`outputs: 2`** configurado. Com `outputs: 1` os alertas nunca chegam ao Google Sheets — este era um bug do fluxo original.
+> **Importante:** O nó MONITOR DE INTEGRIDADE deve ter **`outputs: 2`** configurado. Com `outputs: 1` os alertas nunca chegam ao Google Sheets.
 
 ### O que é detectado
 
@@ -279,7 +397,7 @@ O Node-RED inclui um nó de **monitoramento estatístico contínuo** que analisa
 | **RNG travado** | Hash duplicado | Estado do gerador ciclando |
 | **Entropia baixa** | Δ semente < 1.000 | Degradação física do gerador |
 | **Correlação serial** | >15% repetição entre sorteios | Memória indesejada no sistema |
-| **Viés estatístico** | Qui-quadrado (χ²) > 75 | Alguns números saindo mais que outros |
+| **Viés estatístico** | Qui-quadrado (χ²) > 75 | Alguns números saindo mais |
 | **Faixa estreita** | Desvio padrão EWMA < 70% | Números concentrados numa região |
 | **Sequências** | Análise de runs | Números consecutivos suspeitos |
 
@@ -287,7 +405,7 @@ O Node-RED inclui um nó de **monitoramento estatístico contínuo** que analisa
 
 ```
 🟢 SAUDÁVEL   Score ≥ 85   Tudo normal
-🟡 ATENÇÃO    Score ≥ 60   Anomalias leves detectadas
+🟡 ATENÇÃO    Score ≥ 60   Anomalias leves
 🔴 CRÍTICO    Score < 60   Problema grave — verificar hardware
 ```
 
@@ -295,7 +413,7 @@ O Node-RED inclui um nó de **monitoramento estatístico contínuo** que analisa
 
 ## 🌐 WebServer embutido
 
-Servidor HTTP na porta 80, em task FreeRTOS dedicada no Core 1.
+Servidor HTTP na porta 80, em task FreeRTOS dedicada no Core 1 com 10KB de stack. Todas as leituras de dados do sorteio passam pelo mutex antes de renderizar.
 
 ### Rotas disponíveis
 
@@ -303,23 +421,22 @@ Servidor HTTP na porta 80, em task FreeRTOS dedicada no Core 1.
 |---|---|
 | `http://[IP]/` | Página visual com dados do último sorteio |
 | `http://[IP]/json` | JSON com sorteio e CPU stats |
-| `http://[IP]/info` | Chave HMAC, versão, entropia acumulada |
+| `http://[IP]/info` | Status do sistema — **sem expor a chave HMAC** |
 
-O IP é exibido no Serial Monitor na inicialização:
+### Resposta `/info` (v2.3)
 
-```
-┌─────────────────────────────────────────────┐
-│       ESP32 CaosForge v2.2 — Online         │
-├─────────────────────────────────────────────┤
-│ IP:     192.168.X.X                         │
-│ Web:    http://192.168.X.X/                 │
-│ JSON:   http://192.168.X.X/json             │
-│ Info:   http://192.168.X.X/info             │
-├─────────────────────────────────────────────┤
-│ HMAC key (NVS): a3f2b9c1d4e5f6...          │
-├─────────────────────────────────────────────┤
-│ Aguardando 10000 iter. de entropia...       │
-└─────────────────────────────────────────────┘
+```json
+{
+  "versao": "2.3",
+  "hmac_key_carregada": true,
+  "hmac_fonte": "NVS",
+  "bearer_token_forte": true,
+  "entropia_iteracoes": 183420,
+  "entropia_minima": 10000,
+  "ip": "192.168.1.42",
+  "uptime_s": 3721,
+  "heap_livre_kb": 214
+}
 ```
 
 ### Resposta `/json`
@@ -337,6 +454,25 @@ O IP é exibido no Serial Monitor na inicialização:
   "iteracoes_entropia": 183420,
   "numeros": [7, 23, 41, 5, 58, 19]
 }
+```
+
+### Serial Monitor no boot (v2.3)
+
+```
+┌─────────────────────────────────────────────┐
+│       ESP32 CaosForge v2.3 — Online         │
+├─────────────────────────────────────────────┤
+│ IP:     192.168.X.X                         │
+│ Web:    http://192.168.X.X/                 │
+│ JSON:   http://192.168.X.X/json             │
+│ Info:   http://192.168.X.X/info             │
+├─────────────────────────────────────────────┤
+│ HMAC key: carregada da NVS (nunca exposta)  │
+├─────────────────────────────────────────────┤
+│ Bearer token forte (>=32): SIM              │
+├─────────────────────────────────────────────┤
+│ Aguardando 10000 iter. de entropia...       │
+└─────────────────────────────────────────────┘
 ```
 
 ---
@@ -369,7 +505,7 @@ Todas incluídas no **ESP32 Arduino Core** — nenhuma instalação adicional:
 | Biblioteca | Uso |
 |---|---|
 | `mbedtls/md.h` | HMAC-SHA256 |
-| `Preferences.h` | NVS — chave HMAC |
+| `Preferences.h` | NVS — chave HMAC persistente |
 | `WiFi.h`, `HTTPClient.h`, `WebServer.h` | Rede e servidor |
 | `<cmath>` | Guard NaN/Inf |
 
@@ -380,8 +516,9 @@ const char* SSID         = "SEU_WIFI";
 const char* PASSWORD     = "SUA_SENHA";
 const char* SERVER_URL   = "http://192.168.X.X:1880/caos";
 
-// Mesmo valor de BEARER_TOKEN nas variáveis de ambiente do Node-RED
-const char* BEARER_TOKEN = "SEU_TOKEN_AQUI";
+// Gere com: openssl rand -hex 32
+// Mínimo obrigatório: 32 caracteres
+const char* BEARER_TOKEN = "cole_aqui_saida_do_openssl_rand_hex_32";
 ```
 
 ### Upload
@@ -389,7 +526,8 @@ const char* BEARER_TOKEN = "SEU_TOKEN_AQUI";
 1. Abra `caos.ino` na Arduino IDE
 2. Placa: **ESP32 Dev Module**
 3. Edite as configurações acima
-4. Upload → Serial Monitor (115200 baud)
+4. Upload → abra o Serial Monitor (115200 baud)
+5. Verifique a linha `Bearer token forte (>=32): SIM`
 
 ---
 
@@ -397,34 +535,29 @@ const char* BEARER_TOKEN = "SEU_TOKEN_AQUI";
 
 ### 1. Cadastrar as variáveis de ambiente
 
-Vá em **≡ → Settings → Environment variables** e adicione:
+**≡ → Settings → Environment variables**
 
-| Nome | Valor | Descrição |
-|---|---|---|
-| `BEARER_TOKEN` | `SEU_TOKEN` | Token que o ESP32 envia no header |
-| `GAS_TOKEN` | `SEU_TOKEN_GAS` | Token que o Apps Script valida |
-| `GAS_URL` | `https://script.google.com/macros/s/SEU_ID/exec` | URL do Apps Script (sem `?token=`) |
+| Nome | Valor |
+|---|---|
+| `BEARER_TOKEN` | mesmo valor de `BEARER_TOKEN` no `caos.ino` |
+| `GAS_TOKEN` | token separado para o Google Sheets (`openssl rand -hex 32`) |
+| `GAS_URL` | URL do Apps Script **sem** `?token=` |
 
-Clique em **Save**.
-
-> Os valores ficam armazenados localmente no servidor Node-RED e **não aparecem no `flows.json`** quando você exporta o fluxo.
+Clique em **Save**. Os valores não aparecem no `flows.json` ao exportar.
 
 ### 2. Importar o fluxo
 
-1. Menu **≡ → Import** → cole o conteúdo de `flows.json`
-2. Clique em **Import → Deploy**
+**≡ → Import** → cole `flows.json` → **Import → Deploy**
 
-### 3. Configurar os nós
+### 3. Configurar os três nós
 
-**Nó "✅ Verificar Bearer Token"** — dê duplo-clique e verifique:
-
+**Nó "✅ Verificar Bearer Token":**
 ```javascript
-// Lê o token da variável de ambiente — não hardcode aqui
 const TOKEN_ESPERADO = env.get('BEARER_TOKEN');
 
 const auth = msg.req && msg.req.headers && msg.req.headers['authorization'];
 if (!auth || auth !== 'Bearer ' + TOKEN_ESPERADO) {
-    node.warn('[AUTH] Tentativa não autorizada — IP: ' + (msg.req && msg.req.ip || 'desconhecido'));
+    node.warn('[AUTH] Tentativa não autorizada — IP: ' + (msg.req && msg.req.ip || '?'));
     node.status({fill:'red', shape:'dot', text:'Rejeitado ' + new Date().toLocaleTimeString()});
     return null;
 }
@@ -432,16 +565,15 @@ node.status({fill:'green', shape:'dot', text:'OK ' + new Date().toLocaleTimeStri
 return msg;
 ```
 
-**Nó "🔑 Adicionar Token GAS"** — dê duplo-clique e verifique:
-
+**Nó "🔑 Adicionar Token GAS":**
 ```javascript
-// Apenas serializa o payload — URL e token ficam no nó http request
+// Apenas serializa — URL e token ficam no nó http request
 msg.payload = JSON.stringify(msg.payload);
 msg.headers = { 'Content-Type': 'application/json' };
 return msg;
 ```
 
-**Nó "http request"** (o que vai para o Google Sheets) — dê duplo-clique e configure:
+**Nó "http request"** (Google Sheets):
 
 | Campo | Valor |
 |---|---|
@@ -449,15 +581,19 @@ return msg;
 | **URL** | `{{{env.GAS_URL}}}?token={{{env.GAS_TOKEN}}}` |
 | **Return** | a UTF-8 string |
 
-> Use **três chaves** `{{{ }}}` — com duas chaves `{{ }}` o Node-RED escapa os caracteres `/` e `?` da URL, quebrando a requisição.
-
-**Nó "MONITOR DE INTEGRIDADE"** — verifique que tem **2 saídas configuradas**:
+**Nó "MONITOR DE INTEGRIDADE"** — verifique que tem **2 saídas**:
 - Saída 0 → `monitor debug`
-- Saída 1 → nó `http request` (Google Sheets alertas)
+- Saída 1 → nó `http request`
 
-### 4. Deploy
+### 4. Verificar que os tokens estão protegidos
 
-Clique em **Deploy** após todas as configurações.
+Exporte o fluxo (**≡ → Export → Download**) e abra o JSON. Você verá:
+
+```json
+"url": "{{{env.GAS_URL}}}?token={{{env.GAS_TOKEN}}}"
+```
+
+Nenhum valor real aparece — o arquivo pode ser commitado no GitHub.
 
 ### Estrutura do fluxo
 
@@ -484,16 +620,6 @@ Clique em **Deploy** após todas as configurações.
                                                        ↓ Sheets aba Alertas
 ```
 
-### Como verificar que os tokens estão protegidos
-
-Após o Deploy, exporte o fluxo (**≡ → Export → Download**) e abra o JSON. Você verá:
-
-```json
-"url": "{{{env.GAS_URL}}}?token={{{env.GAS_TOKEN}}}"
-```
-
-Nenhum valor real aparece — o arquivo pode ser compartilhado ou commitado no GitHub com segurança.
-
 ---
 
 ## 📊 Configuração do Google Sheets
@@ -501,12 +627,12 @@ Nenhum valor real aparece — o arquivo pode ser compartilhado ou commitado no G
 ### Instalação do Apps Script
 
 1. Abra a planilha → **Extensões → Apps Script**
-2. No painel esquerdo, verifique se há mais de um arquivo — se houver, **exclua os extras** (três pontinhos → Excluir), deixando apenas um
-3. No arquivo restante, **Ctrl+A → Delete** para limpar tudo
+2. Verifique se há mais de um arquivo no painel esquerdo — se houver, **exclua os extras** (⋮ → Excluir)
+3. No arquivo restante, **Ctrl+A → Delete**
 4. Cole o conteúdo de `google_apps_script.js`
-5. Configure o token (pode ficar hardcoded aqui — o código do Apps Script é privado):
+5. Configure o token:
    ```javascript
-   const GAS_SECRET_TOKEN = "SEU_TOKEN_GAS";  // mesmo valor de GAS_TOKEN no Node-RED
+   const GAS_SECRET_TOKEN = "SEU_TOKEN_GAS";  // mesmo GAS_TOKEN do Node-RED
    ```
 6. Salve (Ctrl+S)
 7. **Implantar → Nova implantação**
@@ -514,57 +640,63 @@ Nenhum valor real aparece — o arquivo pode ser compartilhado ou commitado no G
    - Executar como: **Eu**
    - Quem pode acessar: **Qualquer pessoa**
 8. Autorize as permissões
-9. Copie a URL gerada (termina em `/exec`) e cole no campo `GAS_URL` das variáveis de ambiente do Node-RED
+9. Copie a URL gerada e cole no campo `GAS_URL` das variáveis de ambiente do Node-RED
+
+### Comportamento anti-replay (v2.3)
+
+O Apps Script agora **rejeita payloads sem timestamp** e payloads com timestamp mais antigo que 5 minutos. O timestamp é enviado automaticamente pelo firmware v2.3 em cada POST.
+
+A comparação usa UTC, o que garante funcionamento correto independente do fuso horário do servidor Node-RED.
 
 ### Testar o Apps Script
 
-Abra no navegador (GET público, não exige token):
 ```
 https://script.google.com/macros/s/SEU_ID/exec
 ```
 
 Resposta esperada:
 ```json
-{"status": "online", "planilha": "Nome da Planilha", "versao": "2.1-melhorado"}
+{"status": "online", "planilha": "...", "versao": "2.3"}
 ```
 
-Se retornar "Página não encontrada" → vá em **Implantar → Gerenciar implantações** e copie a URL correta de lá.
+Se retornar "Página não encontrada" → vá em **Implantar → Gerenciar implantações** e copie a URL atual.
 
 ### Abas da planilha
 
 **`Dados`** — sorteios normais:
 | Data | Semente | Hash | N1 | N2 | N3 | N4 | N5 | N6 | IA_tentativa | IA_Acertos |
 
-**`Alertas`** — anomalias detectadas pelo Monitor:
+**`Alertas`** — anomalias do Monitor:
 | Timestamp | Tipo | Severidade | Mensagem | Valor | Score_RNG | Status_Geral | Chi2 | Desvio_EWMA | Total_Sorteios |
 
 ---
 
 ## 🔧 Solução de problemas
 
-### ESP32 em reboot loop
+### ESP32
 
 | Sintoma no Serial | Causa | Solução |
 |---|---|---|
-| Loop após `[NVS] Chave carregada` | Filesystem incompatível (SPIFFS/LittleFS) | Use o `caos.ino` v2.2 — sem filesystem |
-| Trava antes do NVS | CP2102 sem tempo de estabilização | v2.2 usa `delay(1500)` no boot |
-| Trava após conectar WiFi | Stack overflow na task WebServer | v2.2 usa stack de 10KB para o WebServer |
+| Reboot loop após `[NVS] Chave carregada` | Filesystem incompatível | Use `caos.ino` v2.3 — sem filesystem |
+| `Bearer token forte (>=32): NAO` | Token curto demais | Gere com `openssl rand -hex 32` |
+| `[ERRO] Falha ao criar mutexes` | Heap insuficiente | Verifique se há outras alocações grandes no setup |
 
-### Node-RED — erros comuns
+### Node-RED
 
 | Mensagem | Causa | Solução |
 |---|---|---|
 | `msg properties can no longer override set node properties` | `msg.url` não funciona no Node-RED 3.x | Use `{{{env.GAS_URL}}}` no campo URL do nó |
-| `non-http transport requested` | Campo URL vazio ou com valor inválido | Preencha com `{{{env.GAS_URL}}}?token={{{env.GAS_TOKEN}}}` |
+| `non-http transport requested` | Campo URL com valor inválido | Preencha com `{{{env.GAS_URL}}}?token={{{env.GAS_TOKEN}}}` |
 | Token sempre rejeitado | Variável de ambiente não cadastrada | Verifique **Settings → Environment variables** |
 
-### Google Apps Script — erros comuns
+### Google Apps Script
 
 | Mensagem | Causa | Solução |
 |---|---|---|
-| `SHEET_ID has already been declared` | Dois arquivos no projeto com a mesma variável | Exclua os arquivos extras, deixe só um |
-| `Página não encontrada` | URL da implantação desatualizada | Copie a URL em **Gerenciar implantações** |
-| `Não autorizado` | `GAS_TOKEN` no Node-RED diferente do `GAS_SECRET_TOKEN` no script | Verifique os dois valores |
+| `SHEET_ID has already been declared` | Dois arquivos no projeto | Exclua os extras, deixe só um |
+| `Página não encontrada` | URL desatualizada | Copie em **Gerenciar implantações** |
+| `Payload expirado (> 5 min)` | Relógio do ESP32 ou Node-RED desincronizado | Verifique se o NTP sincronizou no boot |
+| `Não autorizado` | Tokens incompatíveis | Confirme que `GAS_TOKEN` no Node-RED bate com `GAS_SECRET_TOKEN` no script |
 
 ---
 
@@ -573,27 +705,29 @@ Se retornar "Página não encontrada" → vá em **Implantar → Gerenciar impla
 ```
 ESP32CaosForge/
 │
-├── caos.ino                    # Firmware do ESP32 (v2.2)
-│                               # → Chave HMAC persistente em NVS
-│                               # → HMAC-SHA256 + sorteio sem viés
-│                               # → Bearer Token no POST
-│                               # → WebServer em task FreeRTOS (10KB stack)
-│                               # → Entropia mínima (10k iter.) antes do 1º sorteio
+├── caos.ino                    # Firmware (v2.3)
+│                               # → Chave HMAC em NVS — nunca exposta no /info
+│                               # → Bearer Token >= 32 chars obrigatório
+│                               # → SemaphoreHandle_t para UltimoSorteio e CPU stats
+│                               # → Timestamp no payload (ativa anti-replay GAS)
+│                               # → escapeJson() nos campos string do payload
+│                               # → resetarChaveHMAC() só com -DRESET_HMAC_KEY
+│                               # → WebServer task 10KB stack, Core 1
 │                               # → Guard NaN/Inf no tan()
-│                               # → delay(1500) para estabilidade no DOIT V1
+│                               # → delay(1500) + vTaskDelay(1) para DOIT V1
 │                               # → Endpoints: /, /json, /info
 │
-├── flows.json                  # Fluxo Node-RED (v2.2)
-│                               # → Sem tokens hardcoded — usa env vars
-│                               # → Bearer Token via env.get('BEARER_TOKEN')
-│                               # → URL do Sheets via {{{env.GAS_URL}}}
+├── flows.json                  # Fluxo Node-RED (v2.2+)
+│                               # → Tokens via env.get() — não aparecem no export
+│                               # → URL: {{{env.GAS_URL}}}?token={{{env.GAS_TOKEN}}}
 │                               # → MONITOR com outputs: 2 (bug corrigido)
-│                               # → Pipeline completo: IA, Monitor, Sheets
+│                               # → Pipeline: IA, Monitor, Sheets
 │
-├── google_apps_script.js       # Apps Script (v2.1)
-│                               # → Token hardcoded (seguro — código privado)
+├── google_apps_script.js       # Apps Script (v2.3)
+│                               # → Validação de token via ?token= na URL
+│                               # → Anti-replay: rejeita payloads sem timestamp
+│                               # → Timestamp comparado em UTC (fuso neutro)
 │                               # → Roteamento automático Dados/Alertas
-│                               # → Formatação condicional por severidade
 │                               # → Health check via GET /exec
 │
 ├── flow.jpg                    # Screenshot do fluxo Node-RED
@@ -606,28 +740,31 @@ ESP32CaosForge/
 ## 🧠 Fundamentos teóricos
 
 **Por que hardware e não software?**
-Geradores de números pseudo-aleatórios (PRNGs) como `Math.random()` ou `rand()` são algoritmos determinísticos — dada a mesma semente, produzem a mesma sequência. O ESP32 usa fontes físicas genuinamente não-determinísticas: variações de temperatura, interferências eletromagnéticas e instabilidades no oscilador de cristal.
+PRNGs como `Math.random()` ou `rand()` são determinísticos — dada a mesma semente, produzem a mesma sequência. O ESP32 usa fontes físicas genuinamente não-determinísticas: variações de temperatura, interferências eletromagnéticas e instabilidades no oscilador de cristal.
 
 **Por que aguardar entropia mínima?**
-Logo após o boot, o pool de entropia está quase vazio. Aguardar 10.000 iterações garante que o pool foi misturado com milhares de amostras independentes antes do primeiro sorteio, eliminando qualquer previsibilidade na inicialização.
+Logo após o boot, o pool de entropia está quase vazio. 10.000 iterações garantem mistura suficiente com amostras independentes antes do primeiro sorteio.
+
+**Por que `portENTER_CRITICAL` para `entropia_viva` mas mutex para `UltimoSorteio`?**
+`portENTER_CRITICAL` desativa interrupções e é correto para proteger operações brevíssimas entre uma ISR e uma task no mesmo core. Para dados compartilhados entre duas tasks normais (o Oráculo e o WebServer), ele pode causar deadlock. `SemaphoreHandle_t` é o mecanismo correto do FreeRTOS para esse caso.
 
 **Por que o guard no `tan()`?**
-A função `tan(x)` diverge para ±∞ quando `x` se aproxima de π/2 + kπ. Em ponto flutuante, isso produz `Inf` ou `NaN`, e fazer `(uint32_t)(Inf * 1e6)` resulta em comportamento indefinido em C++. O guard com `isfinite()` detecta esses casos e usa `esp_random()` como substituto seguro.
+`tan(x)` diverge para ±∞ próximo de π/2 + kπ. Em ponto flutuante isso produz `Inf` ou `NaN`, e `(uint32_t)(Inf * 1e6)` é comportamento indefinido em C++. O guard com `isfinite()` usa `esp_random()` como fallback seguro.
 
 **Por que o viés de módulo importa?**
-Aplicar `% 60` sobre 256 valores (0–255) faz os números 0–15 terem 5 chances de aparecer enquanto os outros têm apenas 4. Com 10 mil sorteios, esse viés acumula ~4.000 ocorrências a mais para metade dos números — detectável estatisticamente. O CaosForge descarta os 16 bytes problemáticos (240–255), deixando 240 valores para 60 grupos perfeitos de 4.
-
-**O que o Qui-quadrado mede?**
-O teste χ² compara a frequência observada de cada número com a esperada para distribuição uniforme. Um χ² alto indica que alguns números aparecem sistematicamente mais — sinal de viés no gerador.
+Aplicar `% 60` sobre 256 valores faz os números 0–15 terem 5 chances de aparecer e os demais apenas 4. Com 10 mil sorteios isso acumula ~4.000 ocorrências a mais para metade dos números. Descartar 240–255 deixa 240 valores para 60 grupos perfeitos.
 
 **Por que HMAC resiste a length extension attacks?**
-SHA-256 puro permite que, conhecendo `SHA256(mensagem)`, se calcule `SHA256(mensagem ∥ extensão)` sem conhecer a mensagem. O HMAC aplica a chave em duas rodadas, quebrando essa propriedade. Com a chave na NVS e nunca exposta, ninguém consegue forjar um sorteio válido.
+SHA-256 puro permite calcular `SHA256(mensagem ∥ extensão)` conhecendo apenas `SHA256(mensagem)`. O HMAC aplica a chave em duas rodadas, quebrando essa propriedade. Com a chave na NVS e nunca exposta no `/info`, ninguém consegue forjar um sorteio válido.
 
-**Por que `vTaskDelay(1)` é obrigatório na task de entropia?**
-O FreeRTOS monitora se o idle task está recebendo CPU. Uma task em loop infinito sem yield causa starvation do idle task, o watchdog dispara e o chip reseta. Com `vTaskDelay(1)`, a task cede 1ms a cada iteração — suficiente para o watchdog e ainda gera ~1.000 iterações de entropia por segundo.
 
-**Por que variáveis de ambiente no Node-RED protegem os tokens?**
-O `flows.json` exportado contém literalmente todo o código de todos os nós. Qualquer token hardcoded num nó de função aparece em texto puro no export — que pode ser compartilhado, versionado no Git ou enviado por engano. Variáveis de ambiente ficam armazenadas no servidor e são substituídas em tempo de execução, sem aparecer no arquivo exportado.
+---
+
+## 📈 Dados ao vivo
+
+Os sorteios são registrados em tempo real nesta planilha pública:
+
+🔗 **[Acessar Google Sheets](https://docs.google.com/spreadsheets/d/1qoPtb4fNSjBl3aQU2CqS8u9W14VDHrp8trGWmSIrbM0/edit?usp=sharing)**
 
 ---
 
