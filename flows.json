@@ -12,7 +12,7 @@
         "type": "function",
         "z": "9c0e31f49b46727f",
         "name": "✅ Verificar Bearer Token",
-        "func": "// ─── CONFIGURE AQUI ─────────────────────────────────────────\n// Mesmo valor que BEARER_TOKEN no caos.ino\nconst TOKEN_ESPERADO = 'TOKEN';\n// ─────────────────────────────────────────────────────────────\n\nconst auth = msg.req && msg.req.headers && msg.req.headers['authorization'];\nif (!auth || auth !== 'Bearer ' + TOKEN_ESPERADO) {\n    node.warn('[AUTH] Tentativa não autorizada — IP: ' + (msg.req && msg.req.ip || 'desconhecido'));\n    node.status({fill:'red', shape:'dot', text:'Rejeitado ' + new Date().toLocaleTimeString()});\n    return null;\n}\nnode.status({fill:'green', shape:'dot', text:'OK ' + new Date().toLocaleTimeString()});\nreturn msg;",
+        "func": "// ─── CONFIGURE AQUI ─────────────────────────────────────────\n// Mesmo valor que BEARER_TOKEN no caos.ino\nconst TOKEN_ESPERADO = env.get('BEARER_TOKEN');\n// ─────────────────────────────────────────────────────────────\n\nconst auth = msg.req && msg.req.headers && msg.req.headers['authorization'];\nif (!auth || auth !== 'Bearer ' + TOKEN_ESPERADO) {\n    node.warn('[AUTH] Tentativa não autorizada — IP: ' + (msg.req && msg.req.ip || 'desconhecido'));\n    node.status({fill:'red', shape:'dot', text:'Rejeitado ' + new Date().toLocaleTimeString()});\n    return null;\n}\nnode.status({fill:'green', shape:'dot', text:'OK ' + new Date().toLocaleTimeString()});\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -32,7 +32,7 @@
         "type": "function",
         "z": "9c0e31f49b46727f",
         "name": "🔑 Adicionar Token GAS",
-        "func": "const GAS_TOKEN = 'SUA_TOKEN';\nconst GAS_URL   = 'https://script.google.com/macros/s/SUBISTITUIR';\n\n// Monta o payload como string JSON (http request espera string ou buffer)\nmsg.payload = JSON.stringify(msg.payload);\nmsg.headers = { 'Content-Type': 'application/json' };\n\n// Remove msg.url para não conflitar com o campo do nó\ndelete msg.url;\ndelete msg.method;\n\nreturn msg;",
+        "func": "const GAS_TOKEN = env.get('GAS_TOKEN');\nconst GAS_URL = env.get('GAS_URL');\n\n// Monta o payload como string JSON (http request espera string ou buffer)\nmsg.payload = JSON.stringify(msg.payload);\nmsg.headers = { 'Content-Type': 'application/json' };\n\n// Remove msg.url para não conflitar com o campo do nó\ndelete msg.url;\ndelete msg.method;\n\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -286,7 +286,7 @@
         "method": "POST",
         "ret": "txt",
         "paytoqs": "ignore",
-        "url": "https://script.google.com/macros/s/SUBISTITUIR?token=SUA_TOKEN",
+        "url": "{{env.GAS_URL}}?token={{env.GAS_TOKEN}}",
         "tls": "",
         "persist": false,
         "proxy": "",
@@ -611,7 +611,7 @@
         "hidden": false
     },
     {
-        "id": "580f3dac64d492a9",
+        "id": "a2e9984731d1a79d",
         "type": "global-config",
         "env": [],
         "modules": {
