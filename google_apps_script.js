@@ -1,13 +1,12 @@
 // ╔══════════════════════════════════════════════════════════════════════╗
-// ║       ESP32 CaosForge — Google Apps Script Melhorado                ║
+// ║       ESP32 CaosForge — Google Apps Script v2.3                     ║
 // ║                                                                      ║
 // ║  MELHORIAS APLICADAS:                                                ║
 // ║  [1] Validação de token secreto via parâmetro na URL                 ║
 // ║      (Google Apps Script não expõe headers HTTP diretamente)         ║
 // ║  [2] Proteção contra replay: rejeita payloads com timestamp          ║
-// ║      mais antigo que 5 minutos                                       ║
+// ║      mais antigo que 5 minutos — ou SEM timestamp (v2.3+)            ║
 // ║  [3] Endpoint GET /exec retorna status de saúde real                 ║
-// ║  [4] Limite de linhas por aba para evitar planilha infinita          ║
 // ║                                                                      ║
 // ║  COMO USAR:                                                          ║
 // ║  Ao implantar, adicione ?token=SEU_TOKEN_SECRETO_AQUI na URL.       ║
@@ -15,16 +14,8 @@
 // ╚══════════════════════════════════════════════════════════════════════╝
 
 // ─── [1] TOKEN DE AUTENTICAÇÃO ─────────────────────────────────────────
-// IMPORTANTE: troque pelo mesmo valor usado no Node-RED (campo URL do nó
-// "requisição http"). Ex: ?token=a7f3d9e2c1b4...
-const GAS_SECRET_TOKEN = "SUA_TOKEN_AQUI";
+const GAS_SECRET_TOKEN = "SEU_TOKEN_SECRETO_AQUI";
 
-// ─── [4] LIMITE DE LINHAS POR ABA ──────────────────────────────────────
-// Quando a aba atingir este limite, as linhas mais antigas são removidas
-const MAX_LINHAS_DADOS   = 5000;
-const MAX_LINHAS_ALERTAS = 2000;
-
-const SHEET_ID     = SpreadsheetApp.getActiveSpreadsheet().getId();
 const ABA_DADOS    = "Dados";
 const ABA_ALERTAS  = "Alertas";
 
@@ -72,15 +63,6 @@ function corSeveridade(severidade) {
   }
 }
 
-// [4] Remove linhas antigas quando o limite é atingido
-function limitarLinhas(sheet, maxLinhas) {
-  const total = sheet.getLastRow();
-  if (total > maxLinhas + 1) {  // +1 para o cabeçalho
-    const excesso = total - maxLinhas - 1;
-    sheet.deleteRows(2, excesso);  // deleta logo após o cabeçalho (linha 2)
-  }
-}
-
 // ─── [1] VALIDAÇÃO DE TOKEN ────────────────────────────────────────────
 
 function validarToken(e) {
@@ -91,21 +73,26 @@ function validarToken(e) {
   return true;
 }
 
-// ─── [2] VALIDAÇÃO DE TIMESTAMP (anti-replay) ──────────────────────────
-// Aceita payloads com até 5 minutos de atraso
 function timestampRecente(tsString) {
   try {
-    if (!tsString) return true;  // sem timestamp: aceita (compatibilidade)
-    // Formato esperado: DD/MM/YYYY HH:MM:SS
+    if (!tsString) return false;
+
     const partes = tsString.match(/(\d+)\/(\d+)\/(\d+) (\d+):(\d+):(\d+)/);
-    if (!partes) return true;
-    const [,d, m, y, h, min, s] = partes;
-    const data = new Date(y, m-1, d, h, min, s);
-    const agora = new Date();
-    const diffMs = Math.abs(agora - data);
-    return diffMs < 5 * 60 * 1000;  // 5 minutos em ms
+    if (!partes) return false;
+
+    const [, d, m, y, h, min, s] = partes;
+
+    // Como o Node-RED está enviando o horário em UTC (GMT-0),
+    // nós montamos a data interpretando-a diretamente como UTC.
+    const dataRecebida = new Date(Date.UTC(y, m - 1, d, h, min, s));
+
+    // O new Date() pega o momento atual real e a matemática bate perfeitamente.
+    const diffMs = Math.abs(new Date() - dataRecebida);
+    
+    return diffMs < 5 * 60 * 1000;  // 5 minutos
+
   } catch (e) {
-    return true;  // em caso de erro de parse: aceita
+    return false;
   }
 }
 
@@ -143,7 +130,7 @@ function doPost(e) {
 }
 
 function salvarDadosNormais(data) {
-  const sheet    = garantirAba(ABA_DADOS, HEADER_DADOS);
+  const sheet     = garantirAba(ABA_DADOS, HEADER_DADOS);
   const timestamp = formatarData(new Date());
   const numeros   = data.numeros || [];
 
@@ -162,9 +149,6 @@ function salvarDadosNormais(data) {
   sheet.getRange(ultimaLinha, 1, 1, linha.length)
        .setBackground("#e8f5e9")
        .setBorder(false, false, true, false, false, false, "#c8e6c9", SpreadsheetApp.BorderStyle.SOLID);
-
-  // [4] Limita o tamanho da aba
-  limitarLinhas(sheet, MAX_LINHAS_DADOS);
 
   return ContentService
     .createTextOutput(JSON.stringify({ status: "ok", tipo: "sorteio", linha: ultimaLinha }))
@@ -191,7 +175,6 @@ function salvarAlertas(data) {
     sheet.appendRow(linhaOK);
     const ultima = sheet.getLastRow();
     sheet.getRange(ultima, 1, 1, HEADER_ALERTAS.length).setBackground("#f1f8e9");
-    limitarLinhas(sheet, MAX_LINHAS_ALERTAS);  // [4]
     return ContentService
       .createTextOutput(JSON.stringify({ status: "ok", tipo: "monitor_ok", alertas_gravados: 0 }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -217,17 +200,13 @@ function salvarAlertas(data) {
     linhasGravadas++;
   });
 
-  // [4] Limita o tamanho da aba de alertas
-  limitarLinhas(sheet, MAX_LINHAS_ALERTAS);
-
   return ContentService
     .createTextOutput(JSON.stringify({ status: "ok", tipo: "monitor_alertas", alertas_gravados: linhasGravadas }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// [3] GET /exec — health check aprimorado
+// [3] GET /exec — health check
 function doGet(e) {
-  // GET público (não exige token) para health check de monitoramento
   const ss     = SpreadsheetApp.getActiveSpreadsheet();
   const sheets = ss.getSheets().map(s => ({
     nome:     s.getName(),
@@ -241,7 +220,7 @@ function doGet(e) {
       planilha:  ss.getName(),
       abas:      sheets,
       timestamp: formatarData(new Date()),
-      versao:    "2.0-melhorado"
+      versao:    "2.3"
     }))
     .setMimeType(ContentService.MimeType.JSON);
 }
