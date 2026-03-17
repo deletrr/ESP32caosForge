@@ -61,7 +61,7 @@ const char* BEARER_TOKEN = "TROQUE_POR_TOKEN_FORTE_COM_32_CHARS_MINIMO_AQUI__";
 
 // ─── CONSTANTES ────────────────────────────────────────────────────────
 const long     INTERVALO_MS    = 60000UL;
-const long     GMT_OFFSET      = -3L * 3600L;
+const long     GMT_OFFSET      = 0;
 const int      DST_OFFSET      = 0;
 const char*    NTP_SERVER      = "pool.ntp.org";
 const char*    NVS_NAMESPACE   = "caosforge";
