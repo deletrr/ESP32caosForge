@@ -1,13 +1,21 @@
 // ╔══════════════════════════════════════════════════════════════════════╗
-// ║           ESP32 CaosForge — Firmware v2.1 (DOIT ESP32 DEVKIT V1)   ║
+// ║           ESP32 CaosForge — Firmware v2.3 (DOIT ESP32 DEVKIT V1)   ║
 // ║                                                                      ║
-// ║  MELHORIAS vs original:                                              ║
+// ║  v2.1 — v2.2 (melhorias originais):                                  ║
 // ║  [1] Chave HMAC gerada no boot e salva em NVS — nunca hardcoded     ║
 // ║  [2] Bearer Token autentica o POST ao Node-RED                       ║
 // ║  [3] WebServer em task FreeRTOS dedicada — não bloqueia o loop()    ║
 // ║  [4] Entropia mínima: aguarda 10.000 iterações antes do 1º sorteio  ║
 // ║  [5] Guard NaN/Inf no tan() do amplificador caótico                  ║
-// ║  [6] Endpoint /info expõe chave, versão e stats                      ║
+// ║                                                                      ║
+// ║  v2.3 — correções de segurança e concorrência:                       ║
+// ║  [6] /info NÃO expõe mais hmac_key — apenas indica se está carregada ║
+// ║  [7] Bearer Token: placeholder forte obrigatório (>= 32 chars)      ║
+// ║  [8] SemaphoreHandle_t ultimoMtx protege struct UltimoSorteio entre tasks ║
+// ║  [9] SemaphoreHandle_t snapMtx protege arrays de CPU stats entre tasks    ║
+// ║  [10] Timestamp incluído no payload POST → anti-replay GAS ativo     ║
+// ║  [11] resetarChaveHMAC() compilada somente com -DRESET_HMAC_KEY      ║
+// ║  [12] Escape JSON aplicado em campos de string do payload            ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
 #include <Arduino.h>
@@ -46,7 +54,10 @@ const char* PASSWORD     = "SUA_SENHA";
 const char* SERVER_URL   = "http://192.168.xxx.xx:1880/caos";
 
 // [2] Bearer Token — mesmo valor que TOKEN_ESPERADO no Node-RED
-const char* BEARER_TOKEN = "PALMEIRAS";
+// OBRIGATÓRIO: substitua por uma string aleatória >= 32 caracteres.
+// Gere um token forte com: openssl rand -hex 32
+// NUNCA use o valor padrão abaixo em produção.
+const char* BEARER_TOKEN = "TROQUE_POR_TOKEN_FORTE_COM_32_CHARS_MINIMO_AQUI__";
 
 // ─── CONSTANTES ────────────────────────────────────────────────────────
 const long     INTERVALO_MS    = 60000UL;
@@ -65,6 +76,14 @@ static char    hmac_key_hex[65];
 static portMUX_TYPE entropiaMux    = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t   entropia_viva  = 0;
 volatile uint32_t   contadorEntrop = 0;
+
+// [8] Mutex FreeRTOS para struct UltimoSorteio — sincroniza tasks (loop + WebServer).
+//     IMPORTANTE: portENTER_CRITICAL (spinlock) desativa interrupções e causa
+//     deadlock entre tasks no mesmo core. SemaphoreHandle_t é o mecanismo correto.
+static SemaphoreHandle_t ultimoMtx = NULL;
+
+// [9] Mutex FreeRTOS para arrays de CPU stats (snap_*).
+static SemaphoreHandle_t snapMtx   = NULL;
 
 WebServer     server(80);
 UltimoSorteio ultimo;
@@ -114,7 +133,10 @@ void carregarOuGerarChaveHMAC() {
   hmac_key_hex[64] = '\0';
 }
 
-// Chame no setup() para forçar geração de nova chave, depois remova
+// [11] resetarChaveHMAC() só é compilada quando -DRESET_HMAC_KEY é definido
+//      em build flags. Se chamada acidentalmente no setup(), a chave NVS é
+//      apagada permanentemente. Remova o #define após uso imediato.
+#ifdef RESET_HMAC_KEY
 void resetarChaveHMAC() {
   Preferences prefs;
   prefs.begin(NVS_NAMESPACE, false);
@@ -122,6 +144,7 @@ void resetarChaveHMAC() {
   prefs.end();
   Serial.println("[NVS] Chave removida. Sera regerada no proximo boot.");
 }
+#endif
 
 // ══════════════════════════════════════════════════════════════════════
 //  NTP
@@ -186,6 +209,26 @@ void taskWebServer(void* pvParameters) {
 }
 
 // ══════════════════════════════════════════════════════════════════════
+//  [12] ESCAPE JSON — evita quebra de payload por caracteres especiais
+// ══════════════════════════════════════════════════════════════════════
+
+String escapeJson(const char* s) {
+  String out;
+  out.reserve(strlen(s) + 4);
+  for (const char* p = s; *p; p++) {
+    switch (*p) {
+      case '"':  out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n";  break;
+      case '\r': out += "\\r";  break;
+      case '\t': out += "\\t";  break;
+      default:   out += *p;     break;
+    }
+  }
+  return out;
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  CPU STATS
 // ══════════════════════════════════════════════════════════════════════
 
@@ -196,9 +239,16 @@ CoreStats getCoreStats() {
   UBaseType_t n = uxTaskGetSystemState(tasks, MAX_TASKS, &totalRuntime);
   if (n == 0 || totalRuntime == 0) return cs;
 
+  // [9] Mutex FreeRTOS — bloqueia task até adquirir o lock, sem desativar interrupções
+  if (xSemaphoreTake(snapMtx, pdMS_TO_TICKS(50)) != pdTRUE) return cs;
+
   uint32_t deltaTotal = totalRuntime - snap_lastTotal;
   snap_lastTotal = totalRuntime;
-  if (deltaTotal == 0) return cs;
+
+  if (deltaTotal == 0) {
+    xSemaphoreGive(snapMtx);
+    return cs;
+  }
 
   float delta0 = 0, delta1 = 0;
   for (UBaseType_t i = 0; i < n; i++) {
@@ -215,6 +265,8 @@ CoreStats getCoreStats() {
     snap_handles[i] = tasks[i].xHandle;
     snap_runtime[i] = tasks[i].ulRunTimeCounter;
   }
+  xSemaphoreGive(snapMtx);
+
   float half = (float)deltaTotal / 2.0f;
   cs.uso0 = constrain((delta0 / half) * 100.0f, 0.0f, 100.0f);
   cs.uso1 = constrain((delta1 / half) * 100.0f, 0.0f, 100.0f);
@@ -273,18 +325,23 @@ void handleRoot() {
   } else if (!temDados) {
     html += "<div class='card'><div class='nodata'>Aguardando primeiro sorteio...</div></div>";
   } else {
+    // [8] Cópia local via mutex FreeRTOS — protege contra escrita concorrente
+    xSemaphoreTake(ultimoMtx, portMAX_DELAY);
+    UltimoSorteio snap = ultimo;
+    xSemaphoreGive(ultimoMtx);
+
     html += "<div class='card'><div class='label'>&#x1F3B1; Numeros sorteados</div><div class='numbers'>";
-    for (int i = 0; i < 6; i++) html += "<div class='ball'>" + String(ultimo.numeros[i]) + "</div>";
+    for (int i = 0; i < 6; i++) html += "<div class='ball'>" + String(snap.numeros[i]) + "</div>";
     html += "</div></div>";
 
     html += "<div class='card'>"
-            "<div class='row'><span class='muted'>Sorteio</span><span class='val'>#" + String(ultimo.total) + "</span></div>"
-            "<div class='row'><span class='muted'>Data/Hora</span><span class='val'>" + String(ultimo.timestamp) + "</span></div>"
-            "<div class='row' style='margin-bottom:0'><span class='muted'>Semente</span><span class='val'>" + String(ultimo.semente) + "</span></div></div>";
+            "<div class='row'><span class='muted'>Sorteio</span><span class='val'>#" + String(snap.total) + "</span></div>"
+            "<div class='row'><span class='muted'>Data/Hora</span><span class='val'>" + String(snap.timestamp) + "</span></div>"
+            "<div class='row' style='margin-bottom:0'><span class='muted'>Semente</span><span class='val'>" + String(snap.semente) + "</span></div></div>";
 
-    html += "<div class='card'><div class='label'>HMAC-SHA256</div><div class='hash'>" + String(ultimo.hash) + "</div></div>";
+    html += "<div class='card'><div class='label'>HMAC-SHA256</div><div class='hash'>" + String(snap.hash) + "</div></div>";
 
-    float t = ultimo.tempCPU;
+    float t = snap.tempCPU;
     int   tp = constrain((int)((t - 30) / 60.0f * 100), 0, 100);
     String ct = t < 55 ? "#00e5ff" : t < 70 ? "#ffb300" : "#f44336";
     html += "<div class='card'><div class='label'>Temperatura do Die</div>"
@@ -321,41 +378,63 @@ void handleRoot() {
 
 void handleJson() {
   uint32_t iter = capturarContador();
-  if (!temDados) {
+
+  // [8] Leitura atômica de temDados e do struct ultimo via mutex FreeRTOS
+  if (xSemaphoreTake(ultimoMtx, pdMS_TO_TICKS(50)) != pdTRUE) {
+    server.send(503, "application/json", "{\"status\":\"busy\"}");
+    return;
+  }
+  bool dados = temDados;
+  xSemaphoreGive(ultimoMtx);
+
+  if (!dados) {
     server.send(200, "application/json",
       "{\"status\":\"aguardando\",\"pronto\":" + String(iter >= ENTROPIA_MINIMA ? "true" : "false") +
       ",\"iteracoes\":" + String(iter) + ",\"minimo\":" + String(ENTROPIA_MINIMA) + "}");
     return;
   }
+
+  if (xSemaphoreTake(ultimoMtx, pdMS_TO_TICKS(50)) != pdTRUE) {
+    server.send(503, "application/json", "{\"status\":\"busy\"}");
+    return;
+  }
+  UltimoSorteio snap = ultimo;   // cópia local — libera o mutex rapidamente
+  xSemaphoreGive(ultimoMtx);
+
   CoreStats cs = getCoreStats();
   String json =
-    "{\"semente\":"          + String(ultimo.semente)    +
-    ",\"hash\":\""           + String(ultimo.hash)       + "\"" +
-    ",\"timestamp\":\""      + String(ultimo.timestamp)  + "\"" +
-    ",\"total\":"            + String(ultimo.total)      +
-    ",\"temp_cpu\":"         + String(ultimo.tempCPU, 1) +
+    "{\"semente\":"          + String(snap.semente)    +
+    ",\"hash\":\""           + String(snap.hash)       + "\"" +
+    ",\"timestamp\":\""      + String(snap.timestamp)  + "\"" +
+    ",\"total\":"            + String(snap.total)      +
+    ",\"temp_cpu\":"         + String(snap.tempCPU, 1) +
     ",\"cpu_freq_mhz\":"     + String(cs.freq)           +
     ",\"core0_pct\":"        + String(cs.uso0, 1)        +
     ",\"core1_pct\":"        + String(cs.uso1, 1)        +
     ",\"iteracoes_entropia\":" + String(iter)            +
     ",\"numeros\":["         +
-    String(ultimo.numeros[0]) + "," + String(ultimo.numeros[1]) + "," +
-    String(ultimo.numeros[2]) + "," + String(ultimo.numeros[3]) + "," +
-    String(ultimo.numeros[4]) + "," + String(ultimo.numeros[5]) + "]}";
+    String(snap.numeros[0]) + "," + String(snap.numeros[1]) + "," +
+    String(snap.numeros[2]) + "," + String(snap.numeros[3]) + "," +
+    String(snap.numeros[4]) + "," + String(snap.numeros[5]) + "]}";
   server.send(200, "application/json", json);
 }
 
 void handleInfo() {
+  // [6] hmac_key_hex NUNCA é retornada aqui — expô-la anularia toda a
+  //     segurança criptográfica. Indicamos apenas se a chave está carregada.
+  bool chaveCarregada = (hmac_key_hex[0] != '\0');
+  // [7] Verifica comprimento mínimo do Bearer Token (>= 32 chars)
+  bool tokenForte = (strlen(BEARER_TOKEN) >= 32);
   String json =
-    "{\"versao\":\"2.1\""
-    ",\"hmac_key_hex\":\""    + String(hmac_key_hex)    + "\""
+    "{\"versao\":\"2.3\""
+    ",\"hmac_key_carregada\":"    + String(chaveCarregada ? "true" : "false") +
     ",\"hmac_fonte\":\"NVS\""
-    ",\"bearer_token_set\":"  + String(strlen(BEARER_TOKEN) > 10 ? "true" : "false") +
-    ",\"entropia_iteracoes\":" + String(capturarContador()) +
-    ",\"entropia_minima\":"   + String(ENTROPIA_MINIMA)  +
-    ",\"ip\":\""              + WiFi.localIP().toString() + "\""
-    ",\"uptime_s\":"          + String(millis() / 1000)  +
-    ",\"heap_livre_kb\":"     + String(ESP.getFreeHeap() / 1024) +
+    ",\"bearer_token_forte\":"    + String(tokenForte ? "true" : "false") +
+    ",\"entropia_iteracoes\":"    + String(capturarContador()) +
+    ",\"entropia_minima\":"       + String(ENTROPIA_MINIMA)  +
+    ",\"ip\":\""                  + WiFi.localIP().toString() + "\""
+    ",\"uptime_s\":"              + String(millis() / 1000)  +
+    ",\"heap_livre_kb\":"         + String(ESP.getFreeHeap() / 1024) +
     "}";
   server.send(200, "application/json", json);
 }
@@ -411,6 +490,8 @@ void realizarSorteioEEnviar() {
   for (int i = 0; i < 32; i++) sprintf(hashStr + i * 2, "%02x", hash_final[i]);
   hashStr[64] = '\0';
 
+  // [8] Escrita atômica da struct via mutex FreeRTOS — lida pelo WebServer task
+  xSemaphoreTake(ultimoMtx, portMAX_DELAY);
   for (int i = 0; i < 6; i++) ultimo.numeros[i] = numeros[i];
   ultimo.semente = semente;
   ultimo.tempCPU = getTempCPU();
@@ -419,6 +500,7 @@ void realizarSorteioEEnviar() {
   String ts = getTimestamp();
   ts.toCharArray(ultimo.timestamp, sizeof(ultimo.timestamp));
   temDados = true;
+  xSemaphoreGive(ultimoMtx);
 
   CoreStats cs = getCoreStats();
   Serial.println("┌─────────────────────────────────────┐");
@@ -436,9 +518,13 @@ void realizarSorteioEEnviar() {
   Serial.printf( "│ Core1: %-29s │\n", (String(cs.uso1, 1) + "%").c_str());
   Serial.println("└─────────────────────────────────────┘");
 
+  // [10] Inclui timestamp no payload — ativa a proteção anti-replay do GAS
+  // [12] Usa escapeJson() nos campos de string para evitar injeção no JSON
   String payload =
     "{\"origem\":\"ESP32_Chaos\",\"semente\":" + String(semente) +
-    ",\"hash\":\""    + String(hashStr) + "\",\"numeros\":[" +
+    ",\"hash\":\""      + escapeJson(hashStr)          + "\"" +
+    ",\"timestamp\":\"" + escapeJson(ultimo.timestamp)  + "\"" +
+    ",\"numeros\":["    +
     String(numeros[0]) + "," + String(numeros[1]) + "," +
     String(numeros[2]) + "," + String(numeros[3]) + "," +
     String(numeros[4]) + "," + String(numeros[5]) + "]}";
@@ -499,6 +585,14 @@ void setup() {
   server.on("/info", handleInfo);
   server.begin();
 
+  // [8][9] Cria mutexes FreeRTOS — deve ser antes de xTaskCreatePinnedToCore
+  ultimoMtx = xSemaphoreCreateMutex();
+  snapMtx   = xSemaphoreCreateMutex();
+  if (!ultimoMtx || !snapMtx) {
+    Serial.println("[ERRO] Falha ao criar mutexes — reiniciando.");
+    ESP.restart();
+  }
+
   // [3] Task WebServer em Core 1 (10KB stack — necessário para HTML gerado)
   xTaskCreatePinnedToCore(taskWebServer,      "WebServer", 10240, NULL, 1, NULL, 1);
 
@@ -507,16 +601,17 @@ void setup() {
 
   Serial.println();
   Serial.println("┌─────────────────────────────────────────────┐");
-  Serial.println("│       ESP32 CaosForge v2.1 — Online         │");
+  Serial.println("│       ESP32 CaosForge v2.3 — Online         │");
   Serial.println("├─────────────────────────────────────────────┤");
   Serial.printf( "│ IP:     %-36s│\n", WiFi.localIP().toString().c_str());
   Serial.printf( "│ Web:    http://%-29s│\n", (WiFi.localIP().toString() + "/").c_str());
   Serial.printf( "│ JSON:   http://%-29s│\n", (WiFi.localIP().toString() + "/json").c_str());
   Serial.printf( "│ Info:   http://%-29s│\n", (WiFi.localIP().toString() + "/info").c_str());
   Serial.println("├─────────────────────────────────────────────┤");
-  Serial.printf( "│ HMAC key (NVS):                             │\n");
-  Serial.printf( "│  %.44s │\n", hmac_key_hex);
-  Serial.printf( "│  %.44s │\n", hmac_key_hex + 44);
+  Serial.println("│ HMAC key: carregada da NVS (nunca exposta)  │");
+  Serial.println("├─────────────────────────────────────────────┤");
+  Serial.printf( "│ Bearer token forte (>=32): %-16s │\n",
+                 strlen(BEARER_TOKEN) >= 32 ? "SIM" : "NAO — TROQUE!");
   Serial.println("├─────────────────────────────────────────────┤");
   Serial.printf( "│ Aguardando %u iter. de entropia...       │\n", ENTROPIA_MINIMA);
   Serial.println("└─────────────────────────────────────────────┘\n");
