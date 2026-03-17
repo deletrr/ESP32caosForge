@@ -51,7 +51,7 @@ O resultado é um pipeline completo de sorteio auditável e autenticado:
   → [Bearer Token] → [Node-RED] → [env vars + token] → [Google Sheets]
 ```
 
-Cada sorteio é acompanhado de uma assinatura HMAC que permite verificação criptográfica independente. Toda a comunicação entre componentes é autenticada por token. Os tokens **nunca aparecem no `flows.json`** exportado.
+Cada sorteio é acompanhado de uma assinatura HMAC que permite verificação criptográfica independente. Toda a comunicação entre componentes é autenticada por token.
 
 ---
 
