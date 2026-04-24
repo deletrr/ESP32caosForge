@@ -65,26 +65,6 @@
         "wires": []
     },
     {
-        "id": "f1a810199dd29820",
-        "type": "function",
-        "z": "9c0e31f49b46727f",
-        "name": "numeros",
-        "func": "msg.payload = msg.payload.numeros\nreturn msg;",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 920,
-        "y": 200,
-        "wires": [
-            [
-                "d5932b4178822873"
-            ]
-        ]
-    },
-    {
         "id": "bbf7fdb2bedd6f0d",
         "type": "json",
         "z": "9c0e31f49b46727f",
@@ -96,33 +76,10 @@
         "y": 160,
         "wires": [
             [
-                "f1a810199dd29820",
-                "4bbe47684b5f25e7",
-                "4c827d7fd5b99325",
-                "691698112757016a",
-                "d35116b81f3599ee",
-                "6553d62b8397ad12",
                 "3e0ec1b0e10aa239",
                 "2f9c0a7a7e9feca6"
             ]
         ]
-    },
-    {
-        "id": "d35116b81f3599ee",
-        "type": "debug",
-        "z": "9c0e31f49b46727f",
-        "name": "json debug",
-        "active": false,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "payload",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 930,
-        "y": 240,
-        "wires": []
     },
     {
         "id": "461102cf63f364ca",
@@ -134,129 +91,6 @@
         "x": 590,
         "y": 100,
         "wires": []
-    },
-    {
-        "id": "9128e886de7194b8",
-        "type": "ui_text",
-        "z": "9c0e31f49b46727f",
-        "group": "710d9c56605f0ed1",
-        "order": 14,
-        "width": 15,
-        "height": 1,
-        "name": "",
-        "label": "Hash:",
-        "format": "{{msg.payload}}",
-        "layout": "row-center",
-        "className": "",
-        "style": false,
-        "font": "",
-        "fontSize": 16,
-        "color": "#000000",
-        "x": 1110,
-        "y": 120,
-        "wires": []
-    },
-    {
-        "id": "4bbe47684b5f25e7",
-        "type": "function",
-        "z": "9c0e31f49b46727f",
-        "name": "sementes",
-        "func": "msg.payload = msg.payload.semente\nreturn msg;",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 920,
-        "y": 160,
-        "wires": [
-            [
-                "d8c9023a6ee0608b"
-            ]
-        ]
-    },
-    {
-        "id": "4c827d7fd5b99325",
-        "type": "function",
-        "z": "9c0e31f49b46727f",
-        "name": "hash",
-        "func": "msg.payload = msg.payload.hash\nreturn msg;",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 910,
-        "y": 120,
-        "wires": [
-            [
-                "9128e886de7194b8"
-            ]
-        ]
-    },
-    {
-        "id": "d8c9023a6ee0608b",
-        "type": "ui_text",
-        "z": "9c0e31f49b46727f",
-        "group": "710d9c56605f0ed1",
-        "order": 17,
-        "width": 15,
-        "height": 1,
-        "name": "",
-        "label": "Semeste:",
-        "format": "{{msg.payload}}",
-        "layout": "row-center",
-        "className": "",
-        "style": false,
-        "font": "",
-        "fontSize": 16,
-        "color": "#000000",
-        "x": 1120,
-        "y": 160,
-        "wires": []
-    },
-    {
-        "id": "d5932b4178822873",
-        "type": "ui_text",
-        "z": "9c0e31f49b46727f",
-        "group": "710d9c56605f0ed1",
-        "order": 20,
-        "width": 15,
-        "height": 1,
-        "name": "",
-        "label": "",
-        "format": "{{msg.payload}}",
-        "layout": "col-center",
-        "className": "",
-        "style": false,
-        "font": "",
-        "fontSize": 16,
-        "color": "#000000",
-        "x": 1110,
-        "y": 200,
-        "wires": []
-    },
-    {
-        "id": "691698112757016a",
-        "type": "function",
-        "z": "9c0e31f49b46727f",
-        "name": "String",
-        "func": "if (typeof msg.payload === 'string') {\n    msg.payload = JSON.parse(msg.payload);\n}\nmsg.payload.timestamp_nodered = new Date().toISOString();\nreturn msg;",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 910,
-        "y": 280,
-        "wires": [
-            [
-                "fbac0729d72cdead"
-            ]
-        ]
     },
     {
         "id": "d74cb6045b896fec",
@@ -274,8 +108,8 @@
         "authType": "",
         "senderr": false,
         "headers": [],
-        "x": 1420,
-        "y": 480,
+        "x": 1440,
+        "y": 160,
         "wires": [
             [
                 "b7d49ddf85ba6095"
@@ -295,62 +129,8 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 1610,
-        "y": 480,
-        "wires": []
-    },
-    {
-        "id": "fbac0729d72cdead",
-        "type": "debug",
-        "z": "9c0e31f49b46727f",
-        "name": "String debug",
-        "active": false,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "payload",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 1070,
-        "y": 280,
-        "wires": []
-    },
-    {
-        "id": "6553d62b8397ad12",
-        "type": "function",
-        "z": "9c0e31f49b46727f",
-        "name": "Learning",
-        "func": "function predictNext(data) {\n    let forecast = [];\n    for (let i = 0; i < 6; i++) {\n        let sum = 0, weightSum = 0;\n        for (let j = 0; j < Math.min(data.length, 10); j++) {\n            let weight = (j + 1);\n            sum += data[data.length - 1 - j][i] * weight;\n            weightSum += weight;\n        }\n        forecast.push(Math.max(1, Math.min(60, Math.round(sum / weightSum))));\n    }\n    return forecast;\n}\nlet sorteioAtual = msg.payload.numeros;\nlet historico = global.get('caos_history') || [];\nif (historico.length > 5) {\n    let tentativaIA = predictNext(historico);\n    let acertos = sorteioAtual.filter(n => tentativaIA.includes(n)).length;\n    msg.payload = { previsao_ia: tentativaIA, realidade_esp32: sorteioAtual, acertos: acertos, analise: acertos === 0 ? '✅ CAOS PURO' : '⚠️ PADRÃO DETECTADO' };\n    historico.push(sorteioAtual);\n    if (historico.length > 100) historico.shift();\n    global.set('caos_history', historico);\n    return msg;\n} else {\n    historico.push(sorteioAtual);\n    global.set('caos_history', historico);\n    node.status({fill:'blue',shape:'ring',text:'Coletando: ' + historico.length});\n    return null;\n}",
-        "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 940,
-        "y": 420,
-        "wires": [
-            [
-                "5f3cc670ec03e5e4"
-            ]
-        ]
-    },
-    {
-        "id": "5f3cc670ec03e5e4",
-        "type": "debug",
-        "z": "9c0e31f49b46727f",
-        "name": "analise",
-        "active": false,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "payload",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 1080,
-        "y": 420,
+        "x": 1630,
+        "y": 160,
         "wires": []
     },
     {
@@ -365,8 +145,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 930,
-        "y": 480,
+        "x": 910,
+        "y": 160,
         "wires": [
             [
                 "8306e84989cab325",
@@ -379,7 +159,7 @@
         "type": "debug",
         "z": "9c0e31f49b46727f",
         "name": "IA analise",
-        "active": true,
+        "active": false,
         "tosidebar": true,
         "console": false,
         "tostatus": false,
@@ -387,8 +167,8 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 980,
-        "y": 540,
+        "x": 1000,
+        "y": 220,
         "wires": []
     },
     {
@@ -403,8 +183,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 1010,
-        "y": 600,
+        "x": 1030,
+        "y": 280,
         "wires": [
             [
                 "2f056ddc4796e620"
@@ -427,8 +207,8 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 1340,
-        "y": 600,
+        "x": 1360,
+        "y": 280,
         "wires": []
     },
     {
@@ -443,8 +223,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 1170,
-        "y": 480,
+        "x": 1190,
+        "y": 160,
         "wires": [
             [
                 "d74cb6045b896fec",
@@ -457,15 +237,250 @@
         "type": "debug",
         "z": "9c0e31f49b46727f",
         "name": "debug 3",
-        "active": true,
+        "active": false,
         "tosidebar": true,
         "console": false,
         "tostatus": false,
         "complete": "false",
         "statusVal": "",
         "statusType": "auto",
-        "x": 1330,
-        "y": 540,
+        "x": 1350,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "dfda03d7de2e0f45",
+        "type": "http in",
+        "z": "9c0e31f49b46727f",
+        "name": "",
+        "url": "/lotofacil",
+        "method": "post",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 330,
+        "y": 380,
+        "wires": [
+            [
+                "1c3b9c942905449d",
+                "38ab7912074c9aa8",
+                "db7cc27e60173e28"
+            ]
+        ]
+    },
+    {
+        "id": "38ab7912074c9aa8",
+        "type": "http response",
+        "z": "9c0e31f49b46727f",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 590,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "1c3b9c942905449d",
+        "type": "debug",
+        "z": "9c0e31f49b46727f",
+        "name": "post debug",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 610,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "db7cc27e60173e28",
+        "type": "function",
+        "z": "9c0e31f49b46727f",
+        "name": "✅ Verificar Bearer Token",
+        "func": "// ─── CONFIGURE AQUI ──────────────────────────────────────────────────\n// Mesmo valor que BEARER_TOKEN no caos.ino\nconst TOKEN_ESPERADO = env.get('BEARER_TOKEN');\n// ──────────────────────────────────────────────────────────────────────\n\nconst auth = msg.req && msg.req.headers && msg.req.headers['authorization'];\nif (!auth || auth !== 'Bearer ' + TOKEN_ESPERADO) {\n    node.warn('[AUTH] Tentativa não autorizada — IP: ' + (msg.req && msg.req.ip || 'desconhecido'));\n    node.status({fill:'red', shape:'dot', text:'Rejeitado ' + new Date().toLocaleTimeString()});\n    return null;\n}\nnode.status({fill:'green', shape:'dot', text:'OK ' + new Date().toLocaleTimeString()});\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 550,
+        "y": 380,
+        "wires": [
+            [
+                "556c27ca236efead"
+            ]
+        ]
+    },
+    {
+        "id": "556c27ca236efead",
+        "type": "json",
+        "z": "9c0e31f49b46727f",
+        "name": "",
+        "property": "payload",
+        "action": "obj",
+        "pretty": false,
+        "x": 730,
+        "y": 380,
+        "wires": [
+            [
+                "f1eb558cf6684d64",
+                "da89d58a85b628ec"
+            ]
+        ]
+    },
+    {
+        "id": "da89d58a85b628ec",
+        "type": "function",
+        "z": "9c0e31f49b46727f",
+        "name": "IA",
+        "func": "const synaptic = global.get('synaptic');\nconst { Architect } = synaptic;\n\n// --- CONFIGURAÇÃO DE PERFORMANCE ---\nconst LIMITE_TREINO = 30; // Só treina a cada 10 sorteios recebidos\nconst ENTRADAS = 15;      // Lotofácil: 15 números\nconst MAX_VAL = 25;       // Lotofácil: vai de 1 a 25\n// ------------------------------------\n\nlet sorteioAtual = msg.payload.numeros;\nlet rede = global.get('loto_network');\nlet previsaoAnterior = global.get('loto_previsao_ia');\nlet contador = global.get('loto_count_batch') || 0;\n\n// Inicializa a rede se não existir\nif (!rede) {\n    rede = new Architect.Perceptron(ENTRADAS, 30, ENTRADAS);\n    global.set('loto_network', rede);\n    node.status({ fill: 'blue', shape: 'dot', text: 'Rede Loto Inicializada' });\n}\n\n// 1. Calcular acertos (Baseado na previsão feita no sorteio anterior)\nlet acertos = 0;\nif (previsaoAnterior) {\n    acertos = sorteioAtual.filter(n => previsaoAnterior.includes(n)).length;\n}\n\n// 2. Lógica de Treinamento Leve (Batch Processing)\nlet historico = global.get('loto_history') || [];\ncontador++;\n\nif (contador >= LIMITE_TREINO && historico.length > 0) {\n    // Treina com o último par (anterior -> atual)\n    let entradaTreino = historico[historico.length - 1].map(n => n / MAX_VAL);\n    let saidaDesejada = sorteioAtual.map(n => n / MAX_VAL);\n\n    // Executa apenas 10 iterações para não travar o Event Loop\n    for (let i = 0; i < 10; i++) {\n        rede.activate(entradaTreino);\n        rede.propagate(0.3, saidaDesejada);\n    }\n    contador = 0; // Reinicia o contador após o treino\n    node.warn(\"IA Loto: Ciclo de treinamento concluído.\");\n}\n\n// 3. Gerar Previsão para o PRÓXIMO sorteio (Cálculo rápido de ativação)\nlet tentativaBruta = rede.activate(sorteioAtual.map(n => n / MAX_VAL));\nlet previsaoParaProximo = [];\nlet seguranca = 0;\n\nwhile (previsaoParaProximo.length < ENTRADAS && seguranca < 100) {\n    let n = Math.round(tentativaBruta[seguranca % ENTRADAS] * MAX_VAL);\n    if (n < 1) n = 1;\n    if (n > MAX_VAL) n = MAX_VAL;\n\n    // Se o número já existe, incrementa até achar um vago\n    while (previsaoParaProximo.includes(n)) {\n        n = (n % MAX_VAL) + 1;\n    }\n    previsaoParaProximo.push(n);\n    seguranca++;\n}\n\n// Atualiza contextos globais\nhistorico.push(sorteioAtual);\nif (historico.length > 50) historico.shift(); // Mantém histórico curto para poupar RAM\n\nglobal.set('loto_history', historico);\nglobal.set('loto_previsao_ia', previsaoParaProximo);\nglobal.set('loto_count_batch', contador);\n\n// Prepara o payload de saída\nmsg.payload = {\n    semente: msg.payload.semente,\n    hash: msg.payload.hash,\n    numeros: sorteioAtual,\n    ia_tentativa: previsaoAnterior ? previsaoAnterior.sort((a, b) => a - b).join(', ') : 'Treinando...',\n    ia_acertos: acertos\n};\n\nnode.status({\n    fill: contador === 0 ? 'green' : 'yellow',\n    shape: 'dot',\n    text: `Acertos: ${acertos}/15 | Lote: ${contador}/${LIMITE_TREINO}`\n});\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 910,
+        "y": 380,
+        "wires": [
+            [
+                "216214d652956a75",
+                "db9173be6a488f37"
+            ]
+        ]
+    },
+    {
+        "id": "216214d652956a75",
+        "type": "debug",
+        "z": "9c0e31f49b46727f",
+        "name": "IA analise",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1000,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "f1eb558cf6684d64",
+        "type": "function",
+        "z": "9c0e31f49b46727f",
+        "name": "MONITOR DE INTEGRIDADE",
+        "func": "const CONFIG = {\n    JANELA_HISTORICO: 500, MINIMO_PARA_ANALISE: 30, ALPHA_EWMA: 0.1,\n    ALERTA_CHI2_CRITICO: 40, ALERTA_CHI2_AVISO: 30, ALERTA_REPETICAO_MAX: 0.40,\n    ALERTA_SEMENTE_ZERO: true, ALERTA_HASH_REPETIDO: true, ALERTA_DELTA_SEMENTE: 1000,\n    ENVIAR_STATUS_OK: true\n};\nlet historico = global.get('loto_monitor_historico') || [];\nlet frequencias = global.get('loto_monitor_frequencias') || new Array(25).fill(0);\nlet hashes_vistos = global.get('loto_monitor_hashes') || [];\nlet sementes_vistas = global.get('loto_monitor_sementes') || [];\nlet ewma_desvio = global.get('loto_monitor_ewma_desvio') || null;\nlet total_sorteios = global.get('loto_monitor_total') || 0;\nlet alertas_log = global.get('loto_monitor_alertas_log') || [];\nconst sorteio_atual = msg.payload.numeros;\nconst semente_atual = msg.payload.semente;\nconst hash_atual = msg.payload.hash;\nfunction formatarData(d) {\n  const p = n => String(n).padStart(2,'0');\n  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;\n}\nconst timestamp = formatarData(new Date());\nlet alertas_criticos = [];\nif (CONFIG.ALERTA_SEMENTE_ZERO && semente_atual === 0) alertas_criticos.push({tipo:'HARDWARE_REBOOT',severidade:'CRITICO',mensagem:'Semente = 0. ESP32 reiniciou.',valor:semente_atual,timestamp});\nif (CONFIG.ALERTA_HASH_REPETIDO && hashes_vistos.includes(hash_atual)) alertas_criticos.push({tipo:'HASH_DUPLICADO',severidade:'CRITICO',mensagem:'Hash duplicado. RNG ciclando.',valor:hash_atual,timestamp});\nif (sementes_vistas.length > 0) {\n    const delta = Math.abs(semente_atual - sementes_vistas[sementes_vistas.length-1]);\n    if (delta < CONFIG.ALERTA_DELTA_SEMENTE) alertas_criticos.push({tipo:'ENTROPIA_BAIXA',severidade:'AVISO',mensagem:`Variação de semente muito pequena (Δ=${delta}).`,valor:delta,timestamp});\n}\nlet repeticoes_consecutivas = 0, taxa_repeticao = 0;\nif (historico.length > 0) {\n    const anterior = historico[historico.length-1].numeros;\n    repeticoes_consecutivas = sorteio_atual.filter(n => anterior.includes(n)).length;\n    taxa_repeticao = repeticoes_consecutivas / 15;\n    if (taxa_repeticao > CONFIG.ALERTA_REPETICAO_MAX) alertas_criticos.push({tipo:'CORRELACAO_CONSECUTIVA',severidade:'AVISO',mensagem:`${repeticoes_consecutivas} números repetidos (${(taxa_repeticao*100).toFixed(1)}%).`,valor:repeticoes_consecutivas,timestamp});\n}\nsorteio_atual.forEach(n => { if (n >= 1 && n <= 25) frequencias[n-1]++; });\ntotal_sorteios++;\nlet chi2 = 0, chi2_alerta = 'OK';\nlet numero_mais_frequente = {numero:0,freq:0}, numero_menos_frequente = {numero:0,freq:Infinity};\nif (total_sorteios >= CONFIG.MINIMO_PARA_ANALISE) {\n    const freq_esperada = (total_sorteios * 15) / 25;\n    for (let i = 0; i < 25; i++) {\n        const diff = frequencias[i] - freq_esperada;\n        chi2 += (diff*diff) / freq_esperada;\n        if (frequencias[i] > numero_mais_frequente.freq) numero_mais_frequente = {numero:i+1,freq:frequencias[i]};\n        if (frequencias[i] < numero_menos_frequente.freq) numero_menos_frequente = {numero:i+1,freq:frequencias[i]};\n    }\n    chi2 = parseFloat(chi2.toFixed(2));\n    if (chi2 > CONFIG.ALERTA_CHI2_CRITICO) { chi2_alerta = 'CRITICO'; alertas_criticos.push({tipo:'VIES_ESTATISTICO_GRAVE',severidade:'CRITICO',mensagem:`Qui-quadrado = ${chi2}.`,valor:chi2,timestamp}); }\n    else if (chi2 > CONFIG.ALERTA_CHI2_AVISO) chi2_alerta = 'AVISO';\n}\nconst media = sorteio_atual.reduce((a,b)=>a+b,0)/15;\nconst variance = sorteio_atual.reduce((acc,n)=>acc+Math.pow(n-media,2),0)/15;\nconst desvio_atual = Math.sqrt(variance);\nif (ewma_desvio === null) ewma_desvio = desvio_atual;\newma_desvio = CONFIG.ALPHA_EWMA * desvio_atual + (1-CONFIG.ALPHA_EWMA) * ewma_desvio;\nconst desvio_normalizado = parseFloat((ewma_desvio/7.21).toFixed(3));\nlet desvio_alerta = 'OK';\nif (desvio_normalizado < 0.70 || desvio_normalizado > 1.30) { desvio_alerta = 'AVISO'; alertas_criticos.push({tipo:'DESVIO_PADRAO_ANOMALO',severidade:'AVISO',mensagem:`Desvio EWMA = ${ewma_desvio.toFixed(2)}.`,valor:ewma_desvio,timestamp}); }\nconst ordenado = [...sorteio_atual].sort((a,b)=>a-b);\nlet runs = 1;\nfor (let i = 1; i < ordenado.length; i++) if (ordenado[i] !== ordenado[i-1]+1) runs++;\nconst runs_alerta = runs <= 3 ? 'AVISO' : 'OK';\nlet score = 100;\nif (chi2_alerta === 'AVISO') score -= 20;\nif (chi2_alerta === 'CRITICO') score -= 50;\nif (desvio_alerta === 'AVISO') score -= 15;\nif (runs_alerta === 'AVISO') score -= 10;\nif (taxa_repeticao > CONFIG.ALERTA_REPETICAO_MAX) score -= 15;\nalertas_criticos.forEach(a => { if (a.severidade === 'CRITICO') score -= 25; });\nscore = Math.max(0, Math.min(100, score));\nconst saude_label = score >= 85 ? '🟢 SAUDÁVEL' : score >= 60 ? '🟡 ATENÇÃO' : '🔴 CRÍTICO';\nhistorico.push({numeros:sorteio_atual,semente:semente_atual,timestamp});\nif (historico.length > CONFIG.JANELA_HISTORICO) historico.shift();\nif (hashes_vistos.length > CONFIG.JANELA_HISTORICO) hashes_vistos.shift();\nif (sementes_vistas.length > CONFIG.JANELA_HISTORICO) sementes_vistas.shift();\nhashes_vistos.push(hash_atual);\nsementes_vistas.push(semente_atual);\nalertas_log = [...alertas_log,...alertas_criticos].slice(-200);\nglobal.set('loto_monitor_historico', historico);\nglobal.set('loto_monitor_frequencias', frequencias);\nglobal.set('loto_monitor_hashes', hashes_vistos);\nglobal.set('loto_monitor_sementes', sementes_vistas);\nglobal.set('loto_monitor_ewma_desvio', ewma_desvio);\nglobal.set('loto_monitor_total', total_sorteios);\nglobal.set('loto_monitor_alertas_log', alertas_log);\nconst relatorio = {timestamp,sorteio:sorteio_atual,total_analisados:total_sorteios,saude:{score,label:saude_label},metricas:{chi2:{valor:chi2,status:chi2_alerta},desvio_padrao:{ewma:parseFloat(ewma_desvio.toFixed(2)),normalizado:desvio_normalizado,status:desvio_alerta},repeticao_consecutiva:{quantidade:repeticoes_consecutivas,taxa:parseFloat((taxa_repeticao*100).toFixed(1))+'%'},runs:{valor:runs,status:runs_alerta},distribuicao:{numero_mais_frequente,numero_menos_frequente}},alertas:alertas_criticos,alertas_log_total:alertas_log.length};\nnode.status({fill:score>=85?'green':score>=60?'yellow':'red',shape:'dot',text:`Score: ${score} | χ²: ${chi2} | Total: ${total_sorteios}`});\nlet msg_sheets = null;\nif (alertas_criticos.length > 0 || CONFIG.ENVIAR_STATUS_OK) {\n    msg_sheets = {payload:{alertas:alertas_criticos,saude:{score,label:saude_label},metricas:relatorio.metricas,total_analisados:total_sorteios,timestamp},headers:{'Content-Type':'application/json'},method:'POST'};\n}\nreturn [{payload:relatorio}, msg_sheets];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1030,
+        "y": 500,
+        "wires": [
+            [
+                "16b422d899379d35"
+            ],
+            [
+                "db9173be6a488f37"
+            ]
+        ]
+    },
+    {
+        "id": "16b422d899379d35",
+        "type": "debug",
+        "z": "9c0e31f49b46727f",
+        "name": "monitor debug",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 1360,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "db9173be6a488f37",
+        "type": "function",
+        "z": "9c0e31f49b46727f",
+        "name": "🔑 Adicionar Token GAS Lotofácil",
+        "func": "const GAS_TOKEN = env.get('GAS_TOKEN');\nconst GAS_URL = env.get('GAS_URL_LOTOFACIL');\n\nif (!GAS_URL || !GAS_TOKEN) {\n    node.error('GAS_URL_LOTOFACIL ou GAS_TOKEN não configurados');\n    return null;\n}\n\nif (!msg.payload.timestamp) {\n    const now = new Date();\n    const p = n => String(n).padStart(2, '0');\n    msg.payload.timestamp = `${p(now.getDate())}/${p(now.getMonth() + 1)}/${now.getFullYear()} ${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;\n}\n\nmsg.url = GAS_URL + '?token=' + GAS_TOKEN;\nmsg.method = 'POST';\nmsg.payload = JSON.stringify(msg.payload);\nmsg.headers = { 'Content-Type': 'application/json' };\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1200,
+        "y": 380,
+        "wires": [
+            [
+                "be78feced166ca6e",
+                "31bcb43f8d6d4e59"
+            ]
+        ]
+    },
+    {
+        "id": "31bcb43f8d6d4e59",
+        "type": "debug",
+        "z": "9c0e31f49b46727f",
+        "name": "debug gas token",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1350,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "be78feced166ca6e",
+        "type": "http request",
+        "z": "9c0e31f49b46727f",
+        "name": "",
+        "method": "use",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 1440,
+        "y": 380,
+        "wires": [
+            [
+                "74b51f2ae6e68852"
+            ]
+        ]
+    },
+    {
+        "id": "74b51f2ae6e68852",
+        "type": "debug",
+        "z": "9c0e31f49b46727f",
+        "name": "google lotofacil",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "x": 1650,
+        "y": 380,
         "wires": []
     },
     {
@@ -628,7 +643,7 @@
         "hidden": false
     },
     {
-        "id": "02173583bf51e7b5",
+        "id": "4d2e994af2ad431a",
         "type": "global-config",
         "env": [],
         "modules": {
